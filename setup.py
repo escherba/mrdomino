@@ -48,7 +48,7 @@ setup(
     description=("Map-Reduce utility for DominoUp"),
     license="MIT",
     url='https://github.com/knighton/mapreduce',
-    package_data={'mrdomino': ['*.sh']},
+    package_data={'mrdomino': ['mrdomino/*.sh']},
     packages=find_packages(exclude=['tests']),
     install_requires=install_requires,
     dependency_links=dependency_links,
