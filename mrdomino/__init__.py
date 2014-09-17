@@ -28,9 +28,6 @@ handler.setFormatter(formatter)
 logger.addHandler(handler)
 
 
-EXEC_SCRIPT = resource_filename(__name__, "exec.sh")
-
-
 def get_instance(args):
     job_module = imp.load_source('job_module', args.job_module)
     job_class = getattr(job_module, args.job_class)
@@ -60,7 +57,7 @@ class MRStep(object):
 
 class MRSettings(object):
     def __init__(self, input_files, output_dir, tmp_dir, 
-                 exec_script=EXEC_SCRIPT, use_domino=False, 
+                 exec_script, use_domino=False, 
                  n_concurrent_machines=2, n_shards_per_machine=4):
 
         self.exec_script = exec_script
