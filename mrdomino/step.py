@@ -6,7 +6,7 @@ import json
 from os.path import join as path_join
 from glob import glob
 from itertools import imap
-from mrdomino import EXEC_SCRIPT, logger, get_step, get_instance, protocol
+from mrdomino import logger, get_step, get_instance, protocol
 from mrdomino.util import MRCounter, create_cmd, read_files, read_lines, \
     wait_cmd
 
@@ -128,10 +128,10 @@ def schedule_machines(args, command, done_file_pattern, n_shards):
 
     def wrap_cmd(command, use_domino):
         if use_domino:
-            pre = 'domino run %s ' % EXEC_SCRIPT
+            pre = 'domino run %s ' % args.exec_script
             post = ''
         else:
-            pre = '%s ' % EXEC_SCRIPT
+            pre = '%s ' % args.exec_script
             post = ' &'
         return '%s%s%s' % (pre, command, post)
 
@@ -208,7 +208,7 @@ def main():
         work_dir, step.n_mappers, step.n_reducers)
 
     # shuffle mapper outputs to reducer inputs.
-    cmd = create_cmd([EXEC_SCRIPT, 'mrdomino.shuffle',
+    cmd = create_cmd([args.exec_script, 'mrdomino.shuffle',
                       '--work_dir', work_dir,
                       '--input_prefix', 'map.out',
                       '--output_prefix', 'reduce.in',

@@ -59,9 +59,11 @@ class MRStep(object):
 
 
 class MRSettings(object):
-    def __init__(self, input_files, output_dir, tmp_dir, use_domino=False,
+    def __init__(self, input_files, output_dir, tmp_dir, 
+                 exec_script=EXEC_SCRIPT, use_domino=False, 
                  n_concurrent_machines=2, n_shards_per_machine=4):
 
+        self.exec_script = exec_script
         assert isinstance(input_files, list)
         self.input_files = input_files
         assert isinstance(output_dir, str)
@@ -104,11 +106,12 @@ def mapreduce(job_class):
 
     for i, step in enumerate(job._steps):
         cmd_opts = [
-            EXEC_SCRIPT, 'mrdomino.step',
+            job._settings.exec_script, 'mrdomino.step',
             '--step_idx', i,
             '--total_steps', step_count,
             '--input_files', ' '.join(input_file_lists[i]),
             '--work_dir', tmp_dirs[i],
+            '--exec_script', job._settings.exec_script,
             '--output_dir', output_dir,
             '--job_module', sys.modules[job.__module__].__file__,
             '--job_class', job.__class__.__name__,
