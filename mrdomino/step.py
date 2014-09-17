@@ -130,10 +130,10 @@ def schedule_machines(args, command, done_file_pattern, n_shards):
 
     def wrap_cmd(command, use_domino):
         if use_domino:
-            pre = 'domino run %s ' % args.exec_script
+            pre = 'domino run %s ' % os.path.basename(args.exec_script)
             post = ''
         else:
-            pre = '%s ' % args.exec_script
+            pre = '%s ' % os.path.basename(args.exec_script)
             post = ' &'
         return '%s%s%s' % (pre, command, post)
 
