@@ -19,6 +19,8 @@ def parse_args():
                         help='directory to write output files to')
     parser.add_argument('--work_dir', type=str, required=True,
                         help='temporary working directory')
+    parser.add_argument('--exec_script', type=str, required=True,
+                        help='script to use for execution')
     parser.add_argument('--job_module', type=str, required=True)
     parser.add_argument('--job_class', type=str, required=True)
     parser.add_argument('--step_idx', type=int, required=True,
