@@ -176,7 +176,7 @@ def schedule_machines(args, cmd, done_file_pattern, n_shards):
 
 PREFIX_MAP_OUT = 'map.out'
 PREFIX_REDUCE_IN = 'reduce.in'
-PREFIX_REDUCE_OUT = 'redue.out'
+PREFIX_REDUCE_OUT = 'reduce.out'
 
 
 def run_step(args):
@@ -225,6 +225,7 @@ def run_step(args):
             reduce_one_machine.__name__,
             '--step_idx', str(args.step_idx),
             '--input_prefix', PREFIX_REDUCE_IN,
+            '--output_prefix', PREFIX_REDUCE_OUT,
             '--job_module', args.job_module,
             '--job_class', args.job_class,
             '--work_dir', work_dir

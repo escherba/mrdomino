@@ -3,7 +3,7 @@ import sys
 from tempfile import mkdtemp
 from abc import abstractmethod
 from mrdomino.util import MRCounter, protocol, logger
-from mrdomino.step import run_step, parse_args as step_args
+from mrdomino.step import run_step, parse_args as step_args, PREFIX_REDUCE_OUT
 
 
 class MRStep(object):
@@ -58,7 +58,7 @@ def mapreduce(job_class):
     input_file_lists = [job._settings.input_files]
     for step, out_dir in zip(job._steps, tmp_dirs):
         n_reducers = step.n_reducers
-        reduce_format = os.path.join(out_dir, 'reduce.out.%d')
+        reduce_format = os.path.join(out_dir, PREFIX_REDUCE_OUT + '.%d')
         ff = [reduce_format % n for n in range(n_reducers)]
         input_file_lists.append(ff)
 
