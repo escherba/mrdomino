@@ -12,14 +12,10 @@ def reduce(shard, args):
     step = job.get_step(args.step_idx)
     reduce_func = step.reducer
 
-    # default to work_dir if output_dir is not set
     work_dir = args.work_dir
-    output_dir = args.output_dir
-    if output_dir is None:
-        output_dir = work_dir
 
     # process each (key, value) pair.
-    out_fn = path_join(output_dir, args.output_prefix + '.%d' % shard)
+    out_fn = path_join(work_dir, args.output_prefix + '.%d' % shard)
     logger.info("reducer {}: output -> {}".format(shard, out_fn))
 
     assert args.input_prefix is not None
@@ -73,13 +69,13 @@ def reduce(shard, args):
     counters.incr("reducer", "written", count_written)
 
     # write out the counters to file.
-    f = path_join(output_dir, 'reduce.counters.%d' % shard)
+    f = path_join(work_dir, 'reduce.counters.%d' % shard)
     logger.info("reducer {}: counters -> {}".format(shard, f))
     with open(f, 'w') as fh:
         fh.write(counters.serialize())
 
     # finally note that we are done.
-    f = path_join(output_dir, 'reduce.done.%d' % shard)
+    f = path_join(work_dir, 'reduce.done.%d' % shard)
     logger.info("reducer {}: done -> {}".format(shard, f))
     with open(f, 'w') as fh:
         fh.write('')

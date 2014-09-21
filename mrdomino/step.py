@@ -5,6 +5,7 @@ import time
 import json
 from glob import glob
 from itertools import imap
+from mrdomino import map_one_machine, reduce_one_machine
 from mrdomino.shuffle import run_shuffle, parse_args as shuffle_args
 from mrdomino.util import MRCounter, create_cmd, read_files, read_lines, \
     get_step, get_instance, protocol, logger
@@ -103,8 +104,8 @@ def get_shard_groups_to_start(
     # get up to n_todos domino jobs to start.
     start_me = []
     count = 0
-    for i, m in enumerate(machines):
-        if m == ShardState.NOT_STARTED:
+    for i, machine in enumerate(machines):
+        if machine == ShardState.NOT_STARTED:
             machine_shards = range(i * n_shards_per_machine,
                                    (i + 1) * n_shards_per_machine)
             machine_shards = filter(lambda n: n < len(shards), machine_shards)
@@ -173,10 +174,14 @@ def schedule_machines(args, cmd, done_file_pattern, n_shards):
         time.sleep(args.poll_done_interval_sec)
 
 
+PREFIX_MAP_OUT = 'map.out'
+PREFIX_REDUCE_IN = 'reduce.in'
+PREFIX_REDUCE_OUT = 'redue.out'
+
+
 def run_step(args):
 
     logger.info('Mapreduce step: %s', args)
-
     logger.info('%d input files.', len(args.input_files))
 
     work_dir = args.work_dir
@@ -185,12 +190,13 @@ def run_step(args):
     job = get_instance(args)
     step = job.get_step(args.step_idx)
 
+    # perform mapping
     logger.info('Starting %d mappers.', step.n_mappers)
     schedule_machines(
         args,
         cmd=[
-            'mrdomino.map_one_machine',
-            '--step_idx', args.step_idx,
+            map_one_machine.__name__,
+            '--step_idx', str(args.step_idx),
             '--input_files', ' '.join(args.input_files),
             '--job_module', args.job_module,
             '--job_class', args.job_class,
@@ -199,33 +205,33 @@ def run_step(args):
         done_file_pattern=os.path.join(work_dir, 'map.done.%d'),
         n_shards=step.n_mappers)
 
-    counter = combine_counters(
-        work_dir, step.n_mappers, step.n_reducers)
-
-    # shuffle mapper outputs to reducer inputs.
-    shuffle_opts = ['--work_dir', work_dir,
-                    '--input_prefix', 'map.out',
-                    '--output_prefix', 'reduce.in',
-                    '--job_module', args.job_module,
-                    '--job_class', args.job_class,
-                    '--step_idx', str(args.step_idx)]
+    # shuffle mapper outputs to reducer inputs
     logger.info("Shuffling...")
-    run_shuffle(shuffle_args(shuffle_opts))
+    run_shuffle(shuffle_args([
+        '--step_idx', str(args.step_idx),
+        '--input_prefix', PREFIX_MAP_OUT,
+        '--output_prefix', PREFIX_REDUCE_IN,
+        '--job_module', args.job_module,
+        '--job_class', args.job_class,
+        '--work_dir', work_dir
+    ]))
 
+    # perform reduction
     logger.info('Starting %d reducers.', step.n_reducers)
     schedule_machines(
         args,
         cmd=[
-            'mrdomino.reduce_one_machine',
-            '--step_idx', args.step_idx,
+            reduce_one_machine.__name__,
+            '--step_idx', str(args.step_idx),
+            '--input_prefix', PREFIX_REDUCE_IN,
             '--job_module', args.job_module,
             '--job_class', args.job_class,
-            '--input_prefix', 'reduce.in',
             '--work_dir', work_dir
         ],
         done_file_pattern=os.path.join(work_dir, 'reduce.done.%d'),
         n_shards=step.n_reducers)
 
+    # collect counters
     counter = combine_counters(
         work_dir, step.n_mappers, step.n_reducers)
     logger.info(('Step %d counters:\n' % args.step_idx) + counter.show())
@@ -252,9 +258,8 @@ def run_step(args):
                              .format(job.OUTPUT_PROTOCOL))
 
         # make sure that files are sorted by shard number
-        glob_prefix = 'reduce.out'
-        filenames = glob(os.path.join(work_dir, glob_prefix + '.[0-9]*'))
-        prefix_match = re.compile('.*\\b' + glob_prefix + '\\.(\\d+)$')
+        filenames = glob(os.path.join(work_dir, PREFIX_REDUCE_OUT + '.[0-9]*'))
+        prefix_match = re.compile('.*\\b' + PREFIX_REDUCE_OUT + '\\.(\\d+)$')
         presorted = []
         for filename in filenames:
             match = prefix_match.match(filename)
