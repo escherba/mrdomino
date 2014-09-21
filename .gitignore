@@ -1,6 +1,7 @@
 *.py[cod]
 *.d
 *.o
+__pycache__/
 dist/
 build/
 .backup/
