@@ -7,24 +7,22 @@ from itertools import imap
 from mrdomino.util import read_files, get_step, logger
 
 
-def parse_args():
-    ap = ArgumentParser()
-    ap.add_argument('--work_dir', type=str, required=True,
-                    help='directory containing files to shuffle')
-    ap.add_argument('--job_module', type=str, required=True)
-    ap.add_argument('--job_class', type=str, required=True)
-    ap.add_argument('--step_idx', type=int, required=True)
-    ap.add_argument('--input_prefix', type=str, default='map.out',
-                    help='string that input files are prefixed with')
-    ap.add_argument('--output_prefix', type=str, default='reduce.in',
-                    help='string to prefix output files')
-    args = ap.parse_args()
-    return args
+def parse_args(args=None):
+    parser = ArgumentParser()
+    parser.add_argument('--work_dir', type=str, required=True,
+                        help='directory containing files to shuffle')
+    parser.add_argument('--job_module', type=str, required=True)
+    parser.add_argument('--job_class', type=str, required=True)
+    parser.add_argument('--step_idx', type=int, required=True)
+    parser.add_argument('--input_prefix', type=str, default='map.out',
+                        help='string that input files are prefixed with')
+    parser.add_argument('--output_prefix', type=str, default='reduce.in',
+                        help='string to prefix output files')
+    namespace = parser.parse_args(args)
+    return namespace
 
 
-def main():
-
-    args = parse_args()
+def run_shuffle(args):
 
     # count exactly how many input lines we have so we can balance work.
     glob_pattern = path_join(args.work_dir,
@@ -75,4 +73,4 @@ def main():
                 .format(args.step_idx, lines_written))
 
 if __name__ == "__main__":
-    main()
+    run_shuffle(parse_args())

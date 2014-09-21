@@ -5,8 +5,9 @@ import time
 import json
 from glob import glob
 from itertools import imap
+from mrdomino.shuffle import run_shuffle, parse_args as shuffle_args
 from mrdomino.util import MRCounter, create_cmd, read_files, read_lines, \
-    wait_cmd, get_step, get_instance, protocol, logger
+    get_step, get_instance, protocol, logger
 
 
 def parse_args(args=None):
@@ -208,14 +209,14 @@ def run_step(args):
         work_dir, step.n_mappers, step.n_reducers)
 
     # shuffle mapper outputs to reducer inputs.
-    cmd = create_cmd([args.exec_script, 'mrdomino.shuffle',
-                      '--work_dir', work_dir,
-                      '--input_prefix', 'map.out',
-                      '--output_prefix', 'reduce.in',
-                      '--job_module', args.job_module,
-                      '--job_class', args.job_class,
-                      '--step_idx', args.step_idx])
-    wait_cmd(cmd, logger, "Shuffling")
+    shuffle_opts = ['--work_dir', work_dir,
+                    '--input_prefix', 'map.out',
+                    '--output_prefix', 'reduce.in',
+                    '--job_module', args.job_module,
+                    '--job_class', args.job_class,
+                    '--step_idx', str(args.step_idx)]
+    logger.info("Shuffling...")
+    run_shuffle(shuffle_args(shuffle_opts))
 
     logger.info('Starting %d reducers.', step.n_reducers)
     cmd = create_cmd(['mrdomino.reduce_one_machine',

@@ -2,8 +2,8 @@ import os
 import sys
 from tempfile import mkdtemp
 from abc import abstractmethod
-from mrdomino.util import MRCounter, get_step, get_instance, protocol, logger
-from mrdomino.step import parse_args, run_step
+from mrdomino.util import MRCounter, protocol, logger
+from mrdomino.step import run_step, parse_args as step_args
 
 
 class MRStep(object):
@@ -84,7 +84,7 @@ def mapreduce(job_class):
             '--n_shards_per_machine', str(job._settings.n_shards_per_machine)
         ]
         logger.info("Starting step %d with options: %s" % (i, cmd_opts))
-        run_step(parse_args(cmd_opts))
+        run_step(step_args(cmd_opts))
     logger.info('All done.')
 
 
