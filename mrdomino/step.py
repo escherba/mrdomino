@@ -3,12 +3,21 @@ import os
 import re
 import time
 import json
+import sys
+import subprocess
 from glob import glob
 from itertools import imap
 from mrdomino import map_one_machine, reduce_one_machine
 from mrdomino.shuffle import run_shuffle, parse_args as shuffle_args
-from mrdomino.util import MRCounter, create_cmd, read_files, read_lines, \
+from mrdomino.util import MRCounter, read_files, read_lines, \
     get_step, get_instance, protocol, logger
+
+
+DOMINO_EXEC = 'domino'
+
+PREFIX_MAP_OUT = 'map.out'
+PREFIX_REDUCE_IN = 'reduce.in'
+PREFIX_REDUCE_OUT = 'reduce.out'
 
 
 def parse_args(args=None):
@@ -73,7 +82,8 @@ def update_shards_done(args, done_pattern, num_shards, use_domino,
                        shard2state):
     """go to disk and find out which shards are completed."""
     if args.use_domino:
-        os.system('domino download')
+        proc = subprocess.Popen([DOMINO_EXEC, 'download'])
+        proc.communicate()
     for i in range(num_shards):
         filename = done_pattern % i
         if os.path.isfile(filename):
@@ -130,12 +140,10 @@ def schedule_machines(args, cmd, done_file_pattern, n_shards):
 
     def wrap_cmd(command, use_domino):
         if use_domino:
-            prefix = ['domino', 'run', os.path.basename(args.exec_script)]
-            suffix = []
+            prefix = [DOMINO_EXEC, 'run', os.path.basename(args.exec_script)]
         else:
             prefix = [args.exec_script]
-            suffix = ['&']
-        return create_cmd(prefix + command + suffix)
+        return prefix + command
 
     shard2state = dict(zip(
         range(n_shards),
@@ -159,24 +167,33 @@ def schedule_machines(args, cmd, done_file_pattern, n_shards):
         # start the jobs.
         if start_me:
             logger.info('Starting shard groups: %s', start_me)
+
+        procs = []
         for shards in start_me:
             # execute command.
-            cmd_str = wrap_cmd(cmd + ['--shards', ','.join(map(str, shards))],
+            cmd_lst = wrap_cmd(cmd + ['--shards', ','.join(map(str, shards))],
                                args.use_domino)
-            logger.info("Starting process: {}".format(cmd_str))
-            os.system(cmd_str)
+            logger.info("Starting process: {}".format(' '.join(cmd_lst)))
+            proc = subprocess.Popen(cmd_lst)
+            procs.append(proc)
+
+            # w/o terminating, will get '.dominoignore already locked' error
+            if args.use_domino:
+                proc.communicate()
 
             # note them as started.
             for shard in shards:
                 shard2state[shard] = ShardState.IN_PROGRESS
 
-        # wait to poll.
-        time.sleep(args.poll_done_interval_sec)
-
-
-PREFIX_MAP_OUT = 'map.out'
-PREFIX_REDUCE_IN = 'reduce.in'
-PREFIX_REDUCE_OUT = 'reduce.out'
+        try:
+            # wait to poll.
+            time.sleep(args.poll_done_interval_sec)
+        except KeyboardInterrupt:
+            # User pressed Ctrl-C
+            logger.warn("Keyboard interrupt received")
+            for proc in procs:
+                proc.terminate()
+            sys.exit(1)
 
 
 def run_step(args):

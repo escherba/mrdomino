@@ -163,19 +163,6 @@ class MRTimer(object):
             % (self.clock_interval, self.wall_interval)
 
 
-def create_cmd(parts):
-    """Join together a command line represented as list"""
-    sane_parts = []
-    for part in parts:
-        if not isinstance(part, str):
-            # note: python subprocess module raises a TypeError instead
-            # of converting everything to string
-            part = str(part)
-        sane_parts.append(part)
-
-    return ' '.join(sane_parts)
-
-
 def read_files(filenames):
     """Returns an iterator over files in a list of files"""
     for filename in filenames:
