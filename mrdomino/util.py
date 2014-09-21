@@ -4,7 +4,6 @@ import time
 import gzip
 import re
 import imp
-import subprocess
 import operator
 import logging
 import sys
@@ -58,7 +57,7 @@ class MRCounter(collections.Iterable):
     def incr(self, key, sub_key, incr):
         self.counter[key][sub_key] += incr
 
-    def __iadd__(self, d):
+    def __iadd__(self, counter2):
         """Add another counter (allows += operator)
 
         >>> c = MRCounter()
@@ -73,7 +72,7 @@ class MRCounter(collections.Iterable):
 
         """
         counter = self.counter
-        for key, val in d.iteritems():
+        for key, val in counter2.iteritems():
             counter[key].update(val)
         return self
 
@@ -162,22 +161,6 @@ class MRTimer(object):
     def __str__(self):
         return "clock: %0.03f sec, wall: %0.03f sec." \
             % (self.clock_interval, self.wall_interval)
-
-
-def wait_cmd(cmd, logger, name="Command"):
-    """Execute command and wait for it to finish"""
-    try:
-        with MRTimer() as timer:
-            retcode = subprocess.call(cmd, shell=True)
-        if retcode < 0:
-            logger.error("{} terminated by signal {}".format(name, -retcode))
-        else:
-            logger.info(
-                "{} finished with status code {}".format(name, retcode))
-        logger.info("{} run stats: {}".format(name, str(timer)))
-    except OSError as error:
-        logger.error("{} failed: {}".format(name, error))
-    return retcode
 
 
 def create_cmd(parts):

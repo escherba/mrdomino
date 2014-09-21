@@ -3,8 +3,7 @@ import math
 import itertools
 from os.path import join as path_join
 from subprocess import Popen, PIPE
-from mrdomino.util import create_cmd, open_input, logger, get_instance, \
-    protocol
+from mrdomino.util import open_input, logger, get_instance, protocol
 
 
 def each_input_line(input_files, shard, n_shards):
@@ -15,8 +14,7 @@ def each_input_line(input_files, shard, n_shards):
 
     # get which files this shard is using (partially or the whole file).
     a = len(input_files) * shard / n_shards
-    z = len(input_files) * (shard + 1) / float(n_shards)
-    z = int(math.ceil(z))
+    z = int(math.ceil(len(input_files) * (shard + 1) / float(n_shards)))
 
     # for each input file, yield the slices we want from it.
     for i in range(a, z):
@@ -24,8 +22,8 @@ def each_input_line(input_files, shard, n_shards):
         zz = n_shards * (i + 1)
         assign = slice_assignments[aa:zz]
         inf_gen = itertools.cycle(range(n_shards))
-        with open_input(input_files[i], 'r') as fh:
-            for j, line in itertools.izip(inf_gen, fh):
+        with open_input(input_files[i], 'r') as fhandle:
+            for j, line in itertools.izip(inf_gen, fhandle):
                 if shard == assign[j]:
                     yield line
 
@@ -55,7 +53,7 @@ def map(shard, args):
                     '--output_prefix', args.output_prefix,
                     '--shard', str(shard)]
         logger.info("mapper {}: starting combiner: {}"
-                    .format(shard, create_cmd(cmd_opts)))
+                    .format(shard, cmd_opts))
         proc_combine = Popen(cmd_opts, bufsize=4096, stdin=PIPE)
         proc_sort = Popen(['sort'], bufsize=4096, stdin=PIPE,
                           stdout=proc_combine.stdin)
@@ -91,10 +89,10 @@ def map(shard, args):
     with proc_sort.stdin as in_fh:
         for line in each_input_line(args.input_files, shard, n_shards):
             count_seen += 1
-            kv = json.loads(line)
-            k, v = kv if unpack_tuple else (None, kv)
-            for kv in map_func(k, v):
-                in_fh.write(json.dumps(kv) + '\n')
+            key_value = json.loads(line)
+            key, value = key_value if unpack_tuple else (None, key_value)
+            for key_value in map_func(key, value):
+                in_fh.write(json.dumps(key_value) + '\n')
                 count_written += 1
 
     counters = job._counters
@@ -102,24 +100,25 @@ def map(shard, args):
     counters.incr("mapper", "written", count_written)
 
     # write out the counters to file.
-    f = path_join(args.work_dir, 'map.counters.%d' % shard)
-    logger.info("mapper {}: counters -> {}".format(shard, f))
-    with open(f, 'w') as fh:
-        fh.write(counters.serialize())
+    fname = path_join(args.work_dir, 'map.counters.%d' % shard)
+    logger.info("mapper {}: counters -> {}".format(shard, fname))
+    with open(fname, 'w') as fhandle:
+        fhandle.write(counters.serialize())
 
     # write how many entries were written for reducer balancing purposes.
     # note that if combiner is present, we delegate this responsibility to it.
     if combine_func is None:
-        f = path_join(args.work_dir, args.output_prefix + '_count.%d' % shard)
-        logger.info("mapper {}: lines written -> {}".format(shard, f))
-        with open(f, 'w') as fh:
-            fh.write(str(count_written))
+        fname = path_join(args.work_dir, args.output_prefix +
+                          '_count.%d' % shard)
+        logger.info("mapper {}: lines written -> {}".format(shard, fname))
+        with open(fname, 'w') as fhandle:
+            fhandle.write(str(count_written))
 
     # `communicate' will wait for subprocess to terminate
-    comb_stdout, comb_stderr = proc.communicate()
+    proc.communicate()
 
     # finally note that we are done.
-    f = path_join(args.work_dir, 'map.done.%d' % shard)
-    logger.info("mapper {}: done -> {}".format(shard, f))
-    with open(f, 'w') as fh:
-        fh.write('')
+    fname = path_join(args.work_dir, 'map.done.%d' % shard)
+    logger.info("mapper {}: done -> {}".format(shard, fname))
+    with open(fname, 'w') as fhandle:
+        fhandle.write('')

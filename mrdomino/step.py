@@ -125,17 +125,16 @@ def show_shard_state(shard2state, n_shards_per_machine):
     return ' '.join(output)
 
 
-def schedule_machines(args, command, done_file_pattern, n_shards):
+def schedule_machines(args, cmd, done_file_pattern, n_shards):
 
     def wrap_cmd(command, use_domino):
-
         if use_domino:
-            pre = 'domino run %s ' % os.path.basename(args.exec_script)
-            post = ''
+            prefix = ['domino', 'run', os.path.basename(args.exec_script)]
+            suffix = []
         else:
-            pre = '%s ' % args.exec_script
-            post = ' &'
-        return '%s%s%s' % (pre, command, post)
+            prefix = [args.exec_script]
+            suffix = ['&']
+        return create_cmd(prefix + command + suffix)
 
     shard2state = dict(zip(
         range(n_shards),
@@ -161,10 +160,10 @@ def schedule_machines(args, command, done_file_pattern, n_shards):
             logger.info('Starting shard groups: %s', start_me)
         for shards in start_me:
             # execute command.
-            cmd = command % ','.join(map(str, shards))
-            cmd = wrap_cmd(cmd, args.use_domino)
-            logger.info("Starting process: {}".format(cmd))
-            os.system(cmd)
+            cmd_str = wrap_cmd(cmd + ['--shards', ','.join(map(str, shards))],
+                               args.use_domino)
+            logger.info("Starting process: {}".format(cmd_str))
+            os.system(cmd_str)
 
             # note them as started.
             for shard in shards:
@@ -185,23 +184,18 @@ def run_step(args):
 
     job = get_instance(args)
     step = job.get_step(args.step_idx)
+
     logger.info('Starting %d mappers.', step.n_mappers)
-
-    # create map command
-    cmd_opts = [
-        'mrdomino.map_one_machine',
-        '--step_idx', args.step_idx,
-        '--shards', '%s',
-        '--input_files', ' '.join(args.input_files),
-        '--job_module', args.job_module,
-        '--job_class', args.job_class,
-        '--work_dir', work_dir
-    ]
-    cmd = create_cmd(cmd_opts)
-
     schedule_machines(
         args,
-        command=cmd,
+        cmd=[
+            'mrdomino.map_one_machine',
+            '--step_idx', args.step_idx,
+            '--input_files', ' '.join(args.input_files),
+            '--job_module', args.job_module,
+            '--job_class', args.job_class,
+            '--work_dir', work_dir
+        ],
         done_file_pattern=os.path.join(work_dir, 'map.done.%d'),
         n_shards=step.n_mappers)
 
@@ -219,16 +213,16 @@ def run_step(args):
     run_shuffle(shuffle_args(shuffle_opts))
 
     logger.info('Starting %d reducers.', step.n_reducers)
-    cmd = create_cmd(['mrdomino.reduce_one_machine',
-                      '--step_idx', args.step_idx,
-                      '--shards', '%s',
-                      '--job_module', args.job_module,
-                      '--job_class', args.job_class,
-                      '--input_prefix', 'reduce.in',
-                      '--work_dir', work_dir])
     schedule_machines(
         args,
-        command=cmd,
+        cmd=[
+            'mrdomino.reduce_one_machine',
+            '--step_idx', args.step_idx,
+            '--job_module', args.job_module,
+            '--job_class', args.job_class,
+            '--input_prefix', 'reduce.in',
+            '--work_dir', work_dir
+        ],
         done_file_pattern=os.path.join(work_dir, 'reduce.done.%d'),
         n_shards=step.n_reducers)
 
