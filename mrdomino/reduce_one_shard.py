@@ -69,13 +69,13 @@ def reduce(shard, args):
     counters.incr("reducer", "written", count_written)
 
     # write out the counters to file.
-    f = path_join(work_dir, 'reduce.counters.%d' % shard)
-    logger.info("reducer {}: counters -> {}".format(shard, f))
-    with open(f, 'w') as fh:
-        fh.write(counters.serialize())
+    fname = path_join(work_dir, 'reduce.counters.%d' % shard)
+    logger.info("reducer {}: counters -> {}".format(shard, fname))
+    with open(fname, 'w') as fhandle:
+        fhandle.write(counters.serialize())
 
     # finally note that we are done.
-    f = path_join(work_dir, 'reduce.done.%d' % shard)
-    logger.info("reducer {}: done -> {}".format(shard, f))
-    with open(f, 'w') as fh:
-        fh.write('')
+    fname = path_join(work_dir, 'reduce.done.%d' % shard)
+    logger.info("reducer {}: done -> {}".format(shard, fname))
+    with open(fname, 'w') as fhandle:
+        fhandle.write('')

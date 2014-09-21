@@ -198,6 +198,7 @@ def run_step(args):
             map_one_machine.__name__,
             '--step_idx', str(args.step_idx),
             '--input_files', ' '.join(args.input_files),
+            '--output_prefix', PREFIX_MAP_OUT,
             '--job_module', args.job_module,
             '--job_class', args.job_class,
             '--work_dir', work_dir
