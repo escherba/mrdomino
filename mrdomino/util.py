@@ -3,12 +3,44 @@ import json
 import time
 import gzip
 import re
+import imp
 import subprocess
 import operator
+import logging
+import sys
 import functools
 
 
 NestedCounter = functools.partial(collections.defaultdict, collections.Counter)
+
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+handler = logging.StreamHandler(sys.stderr)
+formatter = logging.Formatter('%(asctime)s: %(levelname)s: %(message)s')
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+
+
+class protocol(object):
+    JSONProtocol = 0
+    JSONValueProtocol = 1
+    PickleProtocol = 2       # unsupported
+    PickleValueProtocol = 3  # unsupported
+    RawProtocol = 4          # unsupported
+    RawValueProtocol = 5     # unsupported
+    ReprProtocol = 6         # unsupported
+    ReprValueProtocol = 7    # unsupported
+
+
+def get_instance(args):
+    job_module = imp.load_source('job_module', args.job_module)
+    job_class = getattr(job_module, args.job_class)
+    return job_class()
+
+
+def get_step(args):
+    return get_instance(args).steps()[args.step_idx]
 
 
 class MRCounter(collections.Iterable):

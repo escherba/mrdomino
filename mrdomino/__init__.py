@@ -1,41 +1,9 @@
 import os
 import sys
-import imp
-import logging
-from pkg_resources import resource_filename
 from tempfile import mkdtemp
 from abc import abstractmethod
-from mrdomino import util
-from mrdomino.util import MRCounter
-
-
-class protocol(object):
-    JSONProtocol = 0
-    JSONValueProtocol = 1
-    PickleProtocol = 2       # unsupported
-    PickleValueProtocol = 3  # unsupported
-    RawProtocol = 4          # unsupported
-    RawValueProtocol = 5     # unsupported
-    ReprProtocol = 6         # unsupported
-    ReprValueProtocol = 7    # unsupported
-
-
-logger = logging.getLogger('mrdomino')
-logger.setLevel(logging.INFO)
-handler = logging.StreamHandler(sys.stderr)
-formatter = logging.Formatter('%(asctime)s: %(levelname)s: %(message)s')
-handler.setFormatter(formatter)
-logger.addHandler(handler)
-
-
-def get_instance(args):
-    job_module = imp.load_source('job_module', args.job_module)
-    job_class = getattr(job_module, args.job_class)
-    return job_class()
-
-
-def get_step(args):
-    return get_instance(args).steps()[args.step_idx]
+from mrdomino.util import MRCounter, get_step, get_instance, protocol, logger
+from mrdomino.step import parse_args, run_step
 
 
 class MRStep(object):
@@ -56,8 +24,8 @@ class MRStep(object):
 
 
 class MRSettings(object):
-    def __init__(self, input_files, output_dir, tmp_dir, 
-                 exec_script, use_domino=False, 
+    def __init__(self, input_files, output_dir, tmp_dir,
+                 exec_script, use_domino=False,
                  n_concurrent_machines=2, n_shards_per_machine=4):
 
         self.exec_script = exec_script
@@ -103,23 +71,20 @@ def mapreduce(job_class):
 
     for i, step in enumerate(job._steps):
         cmd_opts = [
-            job._settings.exec_script, 'mrdomino.step',
-            '--step_idx', i,
-            '--total_steps', step_count,
+            '--step_idx', str(i),
+            '--total_steps', str(step_count),
             '--input_files', ' '.join(input_file_lists[i]),
             '--work_dir', tmp_dirs[i],
             '--exec_script', job._settings.exec_script,
             '--output_dir', output_dir,
             '--job_module', sys.modules[job.__module__].__file__,
             '--job_class', job.__class__.__name__,
-            '--use_domino', int(job._settings.use_domino),
-            '--n_concurrent_machines', job._settings.n_concurrent_machines,
-            '--n_shards_per_machine', job._settings.n_shards_per_machine
+            '--use_domino', str(int(job._settings.use_domino)),
+            '--n_concurrent_machines', str(job._settings.n_concurrent_machines),
+            '--n_shards_per_machine', str(job._settings.n_shards_per_machine)
         ]
-
-        cmd = util.create_cmd(cmd_opts)
-        logger.info("Starting step %d with command: %s" % (i, cmd))
-        util.wait_cmd(cmd, logger, "Step %d" % i)
+        logger.info("Starting step %d with options: %s" % (i, cmd_opts))
+        run_step(parse_args(cmd_opts))
     logger.info('All done.')
 
 

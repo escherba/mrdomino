@@ -2,8 +2,8 @@ import traceback
 from StringIO import StringIO
 from argparse import ArgumentParser
 from multiprocessing import Pool
-from mrdomino import reduce_one_shard, logger
-from mrdomino.util import MRTimer
+from mrdomino import reduce_one_shard
+from mrdomino.util import MRTimer, logger
 
 
 def parse_args():

@@ -2,7 +2,7 @@ import json
 from os.path import join as path_join
 from functools import partial
 from contextlib import nested as nested_context
-from mrdomino import logger, get_instance, protocol
+from mrdomino.util import logger, get_instance, protocol
 
 
 def reduce(shard, args):

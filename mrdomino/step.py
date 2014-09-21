@@ -3,15 +3,13 @@ import os
 import re
 import time
 import json
-from os.path import join as path_join
 from glob import glob
 from itertools import imap
-from mrdomino import logger, get_step, get_instance, protocol
 from mrdomino.util import MRCounter, create_cmd, read_files, read_lines, \
-    wait_cmd
+    wait_cmd, get_step, get_instance, protocol, logger
 
 
-def parse_args():
+def parse_args(args=None):
     parser = ArgumentParser()
     parser.add_argument('--input_files', type=str, nargs='+',
                         help='list of input files to mappers')
@@ -38,14 +36,14 @@ def parse_args():
     parser.add_argument('--poll_done_interval_sec', type=int, default=45,
                         help='interval between successive checks that we '
                         'are done')
-    args = parser.parse_args()
+    namespace = parser.parse_args(args)
 
     # verify functions exist.
-    step = get_step(args)
+    step = get_step(namespace)
     assert step.mapper is not None
     assert step.reducer is not None
 
-    return args
+    return namespace
 
 
 class ShardState(object):
@@ -129,11 +127,12 @@ def show_shard_state(shard2state, n_shards_per_machine):
 def schedule_machines(args, command, done_file_pattern, n_shards):
 
     def wrap_cmd(command, use_domino):
+
         if use_domino:
             pre = 'domino run %s ' % os.path.basename(args.exec_script)
             post = ''
         else:
-            pre = '%s ' % os.path.basename(args.exec_script)
+            pre = '%s ' % args.exec_script
             post = ' &'
         return '%s%s%s' % (pre, command, post)
 
@@ -174,9 +173,8 @@ def schedule_machines(args, command, done_file_pattern, n_shards):
         time.sleep(args.poll_done_interval_sec)
 
 
-def main():
+def run_step(args):
 
-    args = parse_args()
     logger.info('Mapreduce step: %s', args)
 
     logger.info('%d input files.', len(args.input_files))
@@ -260,7 +258,7 @@ def main():
 
         # make sure that files are sorted by shard number
         glob_prefix = 'reduce.out'
-        filenames = glob(path_join(work_dir, glob_prefix + '.[0-9]*'))
+        filenames = glob(os.path.join(work_dir, glob_prefix + '.[0-9]*'))
         prefix_match = re.compile('.*\\b' + glob_prefix + '\\.(\\d+)$')
         presorted = []
         for filename in filenames:
@@ -268,19 +266,19 @@ def main():
             if match is not None:
                 presorted.append((int(match.group(1)), filename))
         filenames = [filename[1] for filename in sorted(presorted)]
-        out_f = path_join(args.output_dir, 'reduce.out')
+        out_f = os.path.join(args.output_dir, 'reduce.out')
         with open(out_f, 'w') as out_fh:
-            for kv in read_lines(filenames):
+            for key_value in read_lines(filenames):
                 if unpack_tuple:
-                    _, v = json.loads(kv)
-                    v = json.dumps(v) + "\n"
+                    _, value = json.loads(key_value)
+                    value = json.dumps(value) + "\n"
                 else:
-                    v = kv
-                out_fh.write(v)
+                    value = key_value
+                out_fh.write(value)
 
     # done.
     logger.info('Mapreduce step done.')
 
 
 if __name__ == '__main__':
-    main()
+    run_step(parse_args())

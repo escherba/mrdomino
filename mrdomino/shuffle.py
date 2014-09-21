@@ -4,8 +4,7 @@ from glob import glob
 from argparse import ArgumentParser
 from os.path import join as path_join
 from itertools import imap
-from mrdomino import get_step, logger
-from mrdomino.util import read_files
+from mrdomino.util import read_files, get_step, logger
 
 
 def parse_args():

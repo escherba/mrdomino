@@ -3,8 +3,8 @@ import math
 import itertools
 from os.path import join as path_join
 from subprocess import Popen, PIPE
-from mrdomino import logger, get_instance, protocol
-from mrdomino.util import create_cmd, open_input
+from mrdomino.util import create_cmd, open_input, logger, get_instance, \
+    protocol
 
 
 def each_input_line(input_files, shard, n_shards):
