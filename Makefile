@@ -22,6 +22,7 @@ clean:
 	test -f env/bin/activate && $(PYTHON) setup.py clean
 	find $(PACKAGE) -type f -name "*.pyc" -exec rm {} \;
 	rm -rf tmp/* out/*
+	rm -rf build dist
 
 lint: dev
 	$(PYTHON) setup.py lint
