@@ -12,10 +12,10 @@ package: env
 	$(PYTHON) setup.py bdist_egg
 	$(PYTHON) setup.py sdist
 
-test: env dev
+test: dev
 	$(PYENV) nosetests --with-doctest $(NOSEARGS)
 
-dev: env/bin/activate dev_requirements.txt
+dev: env dev_requirements.txt
 	$(PYENV) pip install -e . -r dev_requirements.txt
 
 clean:
