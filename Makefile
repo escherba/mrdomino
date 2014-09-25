@@ -15,8 +15,8 @@ package: env
 test: dev
 	$(PYENV) nosetests --with-doctest $(NOSEARGS)
 
-dev: env dev_requirements.txt
-	$(PYENV) pip install -e . -r dev_requirements.txt
+dev: env requirements-tests.txt
+	$(PYENV) pip install -e . -r requirements-tests.txt
 
 clean:
 	test -f env/bin/activate && $(PYTHON) setup.py clean
