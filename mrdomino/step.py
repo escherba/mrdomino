@@ -140,7 +140,8 @@ def schedule_machines(args, cmd, done_file_pattern, n_shards):
 
     def wrap_cmd(command, use_domino):
         if use_domino:
-            prefix = [DOMINO_EXEC, 'run', os.path.basename(args.exec_script)]
+            prefix = [DOMINO_EXEC, 'run', '--no-sync',
+                      os.path.basename(args.exec_script)]
         else:
             prefix = [args.exec_script]
         return prefix + command
@@ -148,6 +149,11 @@ def schedule_machines(args, cmd, done_file_pattern, n_shards):
     shard2state = dict(zip(
         range(n_shards),
         [ShardState.NOT_STARTED] * n_shards))
+
+    # upload everything before we start, since subtasks are run with --no-sync
+    if args.use_domino:
+        proc = subprocess.Popen([DOMINO_EXEC, 'sync'])
+        proc.communicate()
 
     while True:
         # go to disk and look for shard done files.
