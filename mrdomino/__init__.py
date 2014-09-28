@@ -6,6 +6,8 @@ from tempfile import mkdtemp
 from mrdomino.util import MRCounter, protocol, logger, format_cmd
 from mrdomino.step import run_step, parse_args as step_args, PREFIX_REDUCE_OUT
 
+__version__ = '0.1.0'
+
 
 class MRStep(object):
     def __init__(self, mapper, reducer, combiner=None):
