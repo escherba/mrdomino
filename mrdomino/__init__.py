@@ -3,8 +3,10 @@ import sys
 import abc
 import stat
 from tempfile import mkdtemp
-from mrdomino.util import MRCounter, protocol, logger
+from mrdomino.util import MRCounter, protocol, logger, format_cmd
 from mrdomino.step import run_step, parse_args as step_args, PREFIX_REDUCE_OUT
+
+__version__ = '0.1.0'
 
 
 class MRStep(object):
@@ -88,23 +90,22 @@ def mapreduce(job_class):
         step_config = job._settings.step_config[i]
         n_mappers = step_config.get('n_mappers') or 1
         n_reducers = step_config.get('n_reducers') or 1
-        cmd_opts = [
-            '--step_idx', str(i),
-            '--total_steps', str(step_count),
-            '--input_files', ' '.join(input_file_lists[i]),
+        cmd_opts = format_cmd([
+            '--step_idx', i,
+            '--total_steps', step_count,
+            '--input_files', input_file_lists[i],
             '--work_dir', tmp_dirs[i],
             '--exec_script', exec_script,
-            '--n_mappers', str(n_mappers),
-            '--n_reducers', str(n_reducers),
+            '--n_mappers', n_mappers,
+            '--n_reducers', n_reducers,
             '--output_dir', output_dir,
             '--job_module', sys.modules[job.__module__].__file__,
             '--job_class', job.__class__.__name__,
-            '--use_domino', str(int(job._settings.use_domino)),
-            '--n_concurrent_machines',
-            str(job._settings.n_concurrent_machines),
-            '--n_shards_per_machine', str(job._settings.n_shards_per_machine)
-        ]
-        logger.info("Starting step %d with options: %s" % (i, cmd_opts))
+            '--use_domino', int(job._settings.use_domino),
+            '--n_concurrent_machines', job._settings.n_concurrent_machines,
+            '--n_shards_per_machine', job._settings.n_shards_per_machine
+        ])
+        logger.info("Starting step %d with options: %s", i, cmd_opts)
         run_step(step_args(cmd_opts))
     logger.info('All done.')
 

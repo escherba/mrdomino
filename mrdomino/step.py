@@ -10,7 +10,7 @@ from itertools import imap
 from mrdomino import map_one_machine, reduce_one_machine
 from mrdomino.shuffle import run_shuffle, parse_args as shuffle_args
 from mrdomino.util import MRCounter, read_files, read_lines, get_instance, \
-    protocol, logger
+    protocol, logger, format_cmd
 
 
 DOMINO_EXEC = 'domino'
@@ -22,7 +22,7 @@ PREFIX_REDUCE_OUT = 'reduce.out'
 
 def parse_args(args=None):
     parser = ArgumentParser()
-    parser.add_argument('--input_files', type=str, nargs='+',
+    parser.add_argument('--input_files', type=str, nargs='+', required=True,
                         help='list of input files to mappers')
     parser.add_argument('--output_dir', type=str, default='out',
                         help='directory to write output files to')
@@ -76,8 +76,7 @@ def combine_counters(work_dir, n_map_shards, n_reduce_shards):
              read_files(filter(os.path.exists, filenames))))
 
 
-def update_shards_done(args, done_pattern, num_shards, use_domino,
-                       shard2state):
+def update_shards_done(args, done_pattern, num_shards, shard2state):
     """go to disk and find out which shards are completed."""
     if args.use_domino:
         proc = subprocess.Popen([DOMINO_EXEC, 'download'])
@@ -154,8 +153,7 @@ def schedule_machines(args, cmd, done_file_pattern, n_shards):
 
     while True:
         # go to disk and look for shard done files.
-        update_shards_done(args, done_file_pattern, n_shards, args.use_domino,
-                           shard2state)
+        update_shards_done(args, done_file_pattern, n_shards, shard2state)
 
         logger.info(show_shard_state(shard2state, args.n_shards_per_machine))
 
@@ -213,52 +211,73 @@ def run_step(args):
     logger.info('Starting %d mappers.', args.n_mappers)
     schedule_machines(
         args,
-        cmd=[
+        cmd=format_cmd([
             map_one_machine.__name__,
-            '--step_idx', str(args.step_idx),
-            '--input_files', ' '.join(args.input_files),
+            '--step_idx', args.step_idx,
+            '--input_files', args.input_files,
             '--output_prefix', PREFIX_MAP_OUT,
             '--job_module', args.job_module,
             '--job_class', args.job_class,
             '--work_dir', work_dir,
-            '--n_mappers', str(args.n_mappers)
-        ],
+            '--n_mappers', args.n_mappers
+        ]),
         done_file_pattern=os.path.join(work_dir, 'map.done.%d'),
         n_shards=args.n_mappers)
 
+    # clean up mapper inputs if step_idx > 0
+    if args.step_idx > 0:
+        logger.info('Deleting mapper inputs')
+        for fname in args.input_files:
+            logger.info('    Deleting %s', fname)
+            os.unlink(fname)
+
     # shuffle mapper outputs to reducer inputs
     logger.info("Shuffling...")
-    run_shuffle(shuffle_args([
-        '--step_idx', str(args.step_idx),
+    run_shuffle(shuffle_args(format_cmd([
+        '--step_idx', args.step_idx,
         '--input_prefix', PREFIX_MAP_OUT,
         '--output_prefix', PREFIX_REDUCE_IN,
         '--job_module', args.job_module,
         '--job_class', args.job_class,
         '--work_dir', work_dir,
-        '--n_reducers', str(args.n_reducers)
-    ]))
+        '--n_reducers', args.n_reducers
+    ])))
+
+    # clean up mapper outputs
+    logger.info('Deleting mapper outputs')
+    mapper_out_glob = os.path.join(work_dir, PREFIX_MAP_OUT) + '.[0-9]*'
+    for fname in glob(mapper_out_glob):
+        logger.info('    Deleting %s', fname)
+        os.unlink(fname)
 
     # perform reduction
     logger.info('Starting %d reducers.', args.n_reducers)
     schedule_machines(
         args,
-        cmd=[
+        cmd=format_cmd([
             reduce_one_machine.__name__,
-            '--step_idx', str(args.step_idx),
+            '--step_idx', args.step_idx,
             '--input_prefix', PREFIX_REDUCE_IN,
             '--output_prefix', PREFIX_REDUCE_OUT,
             '--job_module', args.job_module,
             '--job_class', args.job_class,
             '--work_dir', work_dir,
-            '--n_reducers', str(args.n_reducers)
-        ],
+            '--n_reducers', args.n_reducers
+        ]),
         done_file_pattern=os.path.join(work_dir, 'reduce.done.%d'),
         n_shards=args.n_reducers)
 
     # collect counters
     counter = combine_counters(
         work_dir, args.n_mappers, args.n_reducers)
-    logger.info(('Step %d counters:\n' % args.step_idx) + counter.show())
+    logger.info('Step %d counters:\n%s', args.step_idx, counter.show())
+
+    # clean up reducer inputs
+    logger.info('Deleting reducer inputs')
+    reducer_in_glob = os.path.join(work_dir, PREFIX_REDUCE_IN) + '.[0-9]*'
+    for fname in glob(reducer_in_glob):
+        logger.info('    Deleting %s', fname)
+        os.unlink(fname)
 
     if args.step_idx == args.total_steps - 1:
 
@@ -299,6 +318,12 @@ def run_step(args):
                 else:
                     value = key_value
                 out_fh.write(value)
+
+        # clean up reducer outputs
+        logger.info('Deleting reducer outputs')
+        for fname in filenames:
+            logger.info('    Deleting %s', fname)
+            os.unlink(fname)
 
     # done.
     logger.info('Mapreduce step done.')
