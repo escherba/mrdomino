@@ -67,7 +67,7 @@ class MRSummary(MRJob):
             input_files=glob.glob(sys.argv[1]),
             output_dir='out',
             tmp_dir='tmp',
-            use_domino=True,
+            use_domino=False,
             n_concurrent_machines=2,
             n_shards_per_machine=3,
             step_config={
