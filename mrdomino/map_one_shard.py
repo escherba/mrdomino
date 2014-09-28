@@ -9,12 +9,13 @@ from mrdomino.util import open_input, logger, get_instance, protocol
 def each_input_line(input_files, shard, n_shards):
     # assign slices of each file to shards.
     slice_assignments = []
+    num_files = len(input_files)
     for i in range(n_shards):
-        slice_assignments += [i] * len(input_files)
+        slice_assignments += [i] * num_files
 
     # get which files this shard is using (partially or the whole file).
-    a = len(input_files) * shard / n_shards
-    z = int(math.ceil(len(input_files) * (shard + 1) / float(n_shards)))
+    a = num_files * shard / n_shards
+    z = int(math.ceil(num_files * (shard + 1) / float(n_shards)))
 
     # for each input file, yield the slices we want from it.
     for i in range(a, z):
@@ -34,7 +35,7 @@ def map(shard, args):
     job = get_instance(args)
     step = job.get_step(args.step_idx)
     map_func = step.mapper
-    n_shards = step.n_mappers
+    n_shards = args.n_mappers
     combine_func = step.combiner
 
     assert 0 <= shard < n_shards

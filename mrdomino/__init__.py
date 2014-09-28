@@ -8,25 +8,21 @@ from mrdomino.step import run_step, parse_args as step_args, PREFIX_REDUCE_OUT
 
 
 class MRStep(object):
-    def __init__(self, mapper, reducer, combiner=None, n_mappers=2,
-                 n_reducers=2):
+    def __init__(self, mapper, reducer, combiner=None):
 
         # do some basic type checking to verify that we pass callables.
-        assert hasattr(mapper, '__call__')
+        assert mapper is not None and hasattr(mapper, '__call__')
         self.mapper = mapper
-        assert hasattr(reducer, '__call__')
+        assert reducer is not None and hasattr(reducer, '__call__')
         self.reducer = reducer
         assert combiner is None or hasattr(combiner, '__call__')
         self.combiner = combiner
-        assert isinstance(n_mappers, int)
-        self.n_mappers = n_mappers
-        assert isinstance(n_reducers, int)
-        self.n_reducers = n_reducers
 
 
 class MRSettings(object):
     def __init__(self, input_files, output_dir, tmp_dir, use_domino=False,
-                 n_concurrent_machines=2, n_shards_per_machine=4):
+                 n_concurrent_machines=2, n_shards_per_machine=4,
+                 step_config=None):
 
         assert isinstance(input_files, list)
         self.input_files = input_files
@@ -36,6 +32,8 @@ class MRSettings(object):
         self.tmp_dir = tmp_dir
         assert isinstance(use_domino, bool)
         self.use_domino = use_domino
+        assert isinstance(step_config, dict)
+        self.step_config = step_config
         assert isinstance(n_concurrent_machines, int)
         self.n_concurrent_machines = n_concurrent_machines
         assert isinstance(n_shards_per_machine, int)
@@ -73,8 +71,9 @@ def mapreduce(job_class):
                 for i in range(step_count)]
 
     input_file_lists = [job._settings.input_files]
-    for step, out_dir in zip(job._steps, tmp_dirs):
-        n_reducers = step.n_reducers
+    for i, (step, out_dir) in enumerate(zip(job._steps, tmp_dirs)):
+        step_config = job._settings.step_config[i]
+        n_reducers = step_config.get('n_reducers') or 1
         reduce_format = os.path.join(out_dir, PREFIX_REDUCE_OUT + '.%d')
         input_file_lists.append([reduce_format % n for n in range(n_reducers)])
 
@@ -86,12 +85,17 @@ def mapreduce(job_class):
         os.makedirs(output_dir)
 
     for i, step in enumerate(job._steps):
+        step_config = job._settings.step_config[i]
+        n_mappers = step_config.get('n_mappers') or 1
+        n_reducers = step_config.get('n_reducers') or 1
         cmd_opts = [
             '--step_idx', str(i),
             '--total_steps', str(step_count),
             '--input_files', ' '.join(input_file_lists[i]),
             '--work_dir', tmp_dirs[i],
             '--exec_script', exec_script,
+            '--n_mappers', str(n_mappers),
+            '--n_reducers', str(n_reducers),
             '--output_dir', output_dir,
             '--job_module', sys.modules[job.__module__].__file__,
             '--job_class', job.__class__.__name__,

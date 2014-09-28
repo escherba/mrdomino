@@ -29,7 +29,7 @@ TESTS_REQUIRE = process_reqs(
 
 setup(
     name="mrdomino",
-    version="0.0.9",
+    version="0.0.10",
     author="James Knighton",
     author_email="knighton@livefyre.com",
     description=("Map-Reduce utility for DominoUp"),

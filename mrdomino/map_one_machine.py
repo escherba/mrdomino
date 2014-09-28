@@ -7,21 +7,23 @@ from mrdomino.util import MRTimer, logger
 
 
 def parse_args():
-    ap = ArgumentParser()
-    ap.add_argument('--step_idx', type=int, required=True,
-                    help='Index of this step (zero-base)')
-    ap.add_argument('--shards', type=str,
-                    help='which shards we are')
-    ap.add_argument('--input_files', type=str, nargs='+',
-                    help='input files')
-    ap.add_argument('--job_module', type=str, required=True)
-    ap.add_argument('--job_class', type=str, required=True)
-    ap.add_argument('--work_dir', type=str, required=True,
-                    help='directory containing map output files')
-    ap.add_argument('--output_prefix', type=str, default='map.out',
-                    help='string to prefix output files')
-    args = ap.parse_args()
-    return args
+    parser = ArgumentParser()
+    parser.add_argument('--step_idx', type=int, required=True,
+                        help='Index of this step (zero-base)')
+    parser.add_argument('--shards', type=str,
+                        help='which shards we are')
+    parser.add_argument('--n_mappers', type=int,
+                        help='how many mappers were scheduled')
+    parser.add_argument('--input_files', type=str, nargs='+',
+                        help='input files')
+    parser.add_argument('--job_module', type=str, required=True)
+    parser.add_argument('--job_class', type=str, required=True)
+    parser.add_argument('--work_dir', type=str, required=True,
+                        help='directory containing map output files')
+    parser.add_argument('--output_prefix', type=str, default='map.out',
+                        help='string to prefix output files')
+    namespace = parser.parse_args()
+    return namespace
 
 
 def do_shard(t):
@@ -33,17 +35,15 @@ def do_shard(t):
         with MRTimer() as timer:
             map_one_shard.map(shard, args)
         logger.info("Shard {} mapped: {}".format(shard, str(timer)))
-    except Exception as e:
+    except Exception as err:
         exc_buffer = StringIO()
         traceback.print_exc(file=exc_buffer)
         logger.error('Uncaught exception while mapping shard {}. {}'
                      .format(shard, exc_buffer.getvalue()))
-        raise e
+        raise err
 
 
-def main():
-    args = parse_args()
-
+def run(args):
     shards = map(int, args.shards.split(','))
     logger.info("Scheduling shards {} on one mapper node".format(shards))
     pool = Pool(processes=len(shards))
@@ -55,4 +55,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    run(parse_args())

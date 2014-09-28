@@ -4,7 +4,7 @@ from glob import glob
 from argparse import ArgumentParser
 from os.path import join as path_join
 from itertools import imap
-from mrdomino.util import read_files, get_step, logger
+from mrdomino.util import read_files, logger
 
 
 def parse_args(args=None):
@@ -14,6 +14,7 @@ def parse_args(args=None):
     parser.add_argument('--job_module', type=str, required=True)
     parser.add_argument('--job_class', type=str, required=True)
     parser.add_argument('--step_idx', type=int, required=True)
+    parser.add_argument('--n_reducers', type=int, required=True)
     parser.add_argument('--input_prefix', type=str, default='map.out',
                         help='string that input files are prefixed with')
     parser.add_argument('--output_prefix', type=str, default='reduce.in',
@@ -39,8 +40,7 @@ def run_shuffle(args):
                                   args.input_prefix + '.[0-9]*')))
     sources = [open(f, 'r') for f in in_ff]
 
-    step = get_step(args)
-    n_output_files = step.n_reducers
+    n_output_files = args.n_reducers
 
     out_format = path_join(args.work_dir, args.output_prefix + '.%d')
     outputs = [open(out_format % i, 'w') for i in range(n_output_files)]
