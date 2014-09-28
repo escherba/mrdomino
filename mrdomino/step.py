@@ -9,8 +9,8 @@ from glob import glob
 from itertools import imap
 from mrdomino import map_one_machine, reduce_one_machine
 from mrdomino.shuffle import run_shuffle, parse_args as shuffle_args
-from mrdomino.util import MRCounter, read_files, read_lines, \
-    get_step, get_instance, protocol, logger
+from mrdomino.util import MRCounter, read_files, read_lines, get_instance, \
+    protocol, logger
 
 
 DOMINO_EXEC = 'domino'
@@ -32,6 +32,10 @@ def parse_args(args=None):
                         help='script to use for execution')
     parser.add_argument('--job_module', type=str, required=True)
     parser.add_argument('--job_class', type=str, required=True)
+    parser.add_argument('--n_mappers', type=int, default=1,
+                        help="number of mappers")
+    parser.add_argument('--n_reducers', type=int, default=1,
+                        help="number of reducers")
     parser.add_argument('--step_idx', type=int, required=True,
                         help='Index of this step (zero-base)')
     parser.add_argument('--total_steps', type=int, required=True,
@@ -48,12 +52,6 @@ def parse_args(args=None):
                         help='interval between successive checks that we '
                         'are done')
     namespace = parser.parse_args(args)
-
-    # verify functions exist.
-    step = get_step(namespace)
-    assert step.mapper is not None
-    assert step.reducer is not None
-
     return namespace
 
 
@@ -140,7 +138,7 @@ def schedule_machines(args, cmd, done_file_pattern, n_shards):
 
     def wrap_cmd(command, use_domino):
         if use_domino:
-            prefix = [DOMINO_EXEC, 'run', os.path.basename(args.exec_script)]
+            prefix = [DOMINO_EXEC, 'run', '--no-sync', args.exec_script]
         else:
             prefix = [args.exec_script]
         return prefix + command
@@ -148,6 +146,11 @@ def schedule_machines(args, cmd, done_file_pattern, n_shards):
     shard2state = dict(zip(
         range(n_shards),
         [ShardState.NOT_STARTED] * n_shards))
+
+    # upload everything before we start, since subtasks are run with --no-sync
+    if args.use_domino:
+        proc = subprocess.Popen([DOMINO_EXEC, 'sync'])
+        proc.communicate()
 
     while True:
         # go to disk and look for shard done files.
@@ -205,10 +208,9 @@ def run_step(args):
     logger.info('Working directory: %s', work_dir)
 
     job = get_instance(args)
-    step = job.get_step(args.step_idx)
 
     # perform mapping
-    logger.info('Starting %d mappers.', step.n_mappers)
+    logger.info('Starting %d mappers.', args.n_mappers)
     schedule_machines(
         args,
         cmd=[
@@ -218,10 +220,11 @@ def run_step(args):
             '--output_prefix', PREFIX_MAP_OUT,
             '--job_module', args.job_module,
             '--job_class', args.job_class,
-            '--work_dir', work_dir
+            '--work_dir', work_dir,
+            '--n_mappers', str(args.n_mappers)
         ],
         done_file_pattern=os.path.join(work_dir, 'map.done.%d'),
-        n_shards=step.n_mappers)
+        n_shards=args.n_mappers)
 
     # shuffle mapper outputs to reducer inputs
     logger.info("Shuffling...")
@@ -231,11 +234,12 @@ def run_step(args):
         '--output_prefix', PREFIX_REDUCE_IN,
         '--job_module', args.job_module,
         '--job_class', args.job_class,
-        '--work_dir', work_dir
+        '--work_dir', work_dir,
+        '--n_reducers', str(args.n_reducers)
     ]))
 
     # perform reduction
-    logger.info('Starting %d reducers.', step.n_reducers)
+    logger.info('Starting %d reducers.', args.n_reducers)
     schedule_machines(
         args,
         cmd=[
@@ -245,14 +249,15 @@ def run_step(args):
             '--output_prefix', PREFIX_REDUCE_OUT,
             '--job_module', args.job_module,
             '--job_class', args.job_class,
-            '--work_dir', work_dir
+            '--work_dir', work_dir,
+            '--n_reducers', str(args.n_reducers)
         ],
         done_file_pattern=os.path.join(work_dir, 'reduce.done.%d'),
-        n_shards=step.n_reducers)
+        n_shards=args.n_reducers)
 
     # collect counters
     counter = combine_counters(
-        work_dir, step.n_mappers, step.n_reducers)
+        work_dir, args.n_mappers, args.n_reducers)
     logger.info(('Step %d counters:\n' % args.step_idx) + counter.show())
 
     if args.step_idx == args.total_steps - 1:

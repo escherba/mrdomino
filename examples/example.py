@@ -54,27 +54,26 @@ class MRSummary(MRJob):
                 mapper=self.map1,
                 combiner=self.combine1,
                 reducer=self.reduce1,
-                n_mappers=6,
-                n_reducers=3
             ),
             MRStep(
                 mapper=self.map2,
                 combiner=self.combine2,
                 reducer=self.reduce2,
-                n_mappers=4,
-                n_reducers=2
             )
         ]
 
     def settings(self):
         return MRSettings(
             input_files=glob.glob(sys.argv[1]),
-            exec_script=sys.argv[2],
             output_dir='out',
             tmp_dir='tmp',
-            use_domino=False,
+            use_domino=True,
             n_concurrent_machines=2,
-            n_shards_per_machine=3
+            n_shards_per_machine=3,
+            step_config={
+                0: dict(n_mappers=6, n_reducers=3),
+                1: dict(n_mappers=4, n_reducers=2)
+            }
         )
 
 

@@ -25,11 +25,11 @@ def process_reqs(reqs):
 INSTALL_REQUIRES = process_reqs(
     resource_string(__name__, 'requirements.txt').splitlines())[0]
 TESTS_REQUIRE = process_reqs(
-    resource_string(__name__, 'dev_requirements.txt').splitlines())[0]
+    resource_string(__name__, 'requirements-tests.txt').splitlines())[0]
 
 setup(
     name="mrdomino",
-    version="0.0.9",
+    version="0.0.10",
     author="James Knighton",
     author_email="knighton@livefyre.com",
     description=("Map-Reduce utility for DominoUp"),
