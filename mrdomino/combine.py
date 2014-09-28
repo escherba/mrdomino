@@ -2,7 +2,7 @@ import sys
 import json
 from os.path import join as path_join
 from argparse import ArgumentParser, FileType
-from mrdomino import logger, get_instance
+from mrdomino.util import logger, get_instance
 
 
 def parse_args():

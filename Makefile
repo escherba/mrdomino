@@ -6,22 +6,23 @@ PYTHON = $(PYENV) python
 PYTHON_TIMED = $(PYENV) time python
 
 run: dev
-	$(PYTHON) examples/example.py
+	$(PYTHON) examples/example.py data/2014-01-18.detail.10000
 
 package: env
 	$(PYTHON) setup.py bdist_egg
 	$(PYTHON) setup.py sdist
 
-test: env dev
+test: dev
 	$(PYENV) nosetests --with-doctest $(NOSEARGS)
 
-dev: env/bin/activate dev_requirements.txt
-	$(PYENV) pip install --process-dependency-links -e . -r dev_requirements.txt
+dev: env requirements-tests.txt
+	$(PYENV) pip install -e . -r requirements-tests.txt
 
 clean:
 	test -f env/bin/activate && $(PYTHON) setup.py clean
 	find $(PACKAGE) -type f -name "*.pyc" -exec rm {} \;
 	rm -rf tmp/* out/*
+	rm -rf build dist
 
 lint: dev
 	$(PYTHON) setup.py lint
@@ -32,8 +33,8 @@ nuke: clean
 env virtualenv: env/bin/activate
 env/bin/activate: requirements.txt setup.py
 	test -f $@ || virtualenv --no-site-packages env
-	$(PYENV) pip install --process-dependency-links -e . -r requirements.txt
+	$(PYENV) pip install -e . -r requirements.txt
 	touch $@
 
 upgrade: env
-	$(PYENV) pip install --process-dependency-links -e . -r requirements.txt --upgrade
+	$(PYENV) pip install -e . -r requirements.txt --upgrade

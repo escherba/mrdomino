@@ -1,5 +1,6 @@
 import re
 import glob
+import sys
 from mrdomino import MRJob, MRStep, MRSettings, protocol as mr_protocol
 
 
@@ -15,7 +16,7 @@ class MRSummary(MRJob):
 
     def map1(self, _, j):
         key = j[u'object'][u'user_id']
-        uname, domain = key.split("@")
+        _, domain = key.split("@")
         tld = get_tld(domain)
         self.increment_counter("TLD map1", tld, 1)
         yield key, 1
@@ -26,7 +27,7 @@ class MRSummary(MRJob):
 
     def reduce1(self, key, vals):
         total = sum(vals)
-        uname, domain = key.split("@")
+        _, domain = key.split("@")
         tld = get_tld(domain)
         self.increment_counter("TLD reduce1", tld, total)
         yield key, total    # username -> count of posts
@@ -36,7 +37,7 @@ class MRSummary(MRJob):
         yield key, total
 
     def map2(self, key, val):
-        uname, domain = key.split("@")
+        _, domain = key.split("@")
         tld = get_tld(domain)
         self.increment_counter("TLD map2", tld, val)
         yield domain, val
@@ -53,26 +54,26 @@ class MRSummary(MRJob):
                 mapper=self.map1,
                 combiner=self.combine1,
                 reducer=self.reduce1,
-                n_mappers=6,
-                n_reducers=3
             ),
             MRStep(
                 mapper=self.map2,
                 combiner=self.combine2,
                 reducer=self.reduce2,
-                n_mappers=4,
-                n_reducers=2
             )
         ]
 
     def settings(self):
         return MRSettings(
-            input_files=glob.glob('./data/2014-01-18.detail.sorted.gz'),
+            input_files=glob.glob(sys.argv[1]),
             output_dir='out',
             tmp_dir='tmp',
-            use_domino=False,
+            use_domino=True,
             n_concurrent_machines=2,
-            n_shards_per_machine=3
+            n_shards_per_machine=3,
+            step_config={
+                0: dict(n_mappers=6, n_reducers=3),
+                1: dict(n_mappers=4, n_reducers=2)
+            }
         )
 
 

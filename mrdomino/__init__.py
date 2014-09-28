@@ -1,66 +1,29 @@
 import os
 import sys
-import imp
-import logging
-from pkg_resources import resource_filename
+import abc
+import stat
 from tempfile import mkdtemp
-from abc import abstractmethod
-from mrdomino import util
-from mrdomino.util import MRCounter
-
-
-class protocol(object):
-    JSONProtocol = 0
-    JSONValueProtocol = 1
-    PickleProtocol = 2       # unsupported
-    PickleValueProtocol = 3  # unsupported
-    RawProtocol = 4          # unsupported
-    RawValueProtocol = 5     # unsupported
-    ReprProtocol = 6         # unsupported
-    ReprValueProtocol = 7    # unsupported
-
-
-logger = logging.getLogger('mrdomino')
-logger.setLevel(logging.INFO)
-handler = logging.StreamHandler(sys.stderr)
-formatter = logging.Formatter('%(asctime)s: %(levelname)s: %(message)s')
-handler.setFormatter(formatter)
-logger.addHandler(handler)
-
-
-def get_instance(args):
-    job_module = imp.load_source('job_module', args.job_module)
-    job_class = getattr(job_module, args.job_class)
-    return job_class()
-
-
-def get_step(args):
-    return get_instance(args).steps()[args.step_idx]
+from mrdomino.util import MRCounter, protocol, logger
+from mrdomino.step import run_step, parse_args as step_args, PREFIX_REDUCE_OUT
 
 
 class MRStep(object):
-    def __init__(self, mapper, reducer, combiner=None, n_mappers=2,
-                 n_reducers=2):
+    def __init__(self, mapper, reducer, combiner=None):
 
         # do some basic type checking to verify that we pass callables.
-        assert hasattr(mapper, '__call__')
+        assert mapper is not None and hasattr(mapper, '__call__')
         self.mapper = mapper
-        assert hasattr(reducer, '__call__')
+        assert reducer is not None and hasattr(reducer, '__call__')
         self.reducer = reducer
         assert combiner is None or hasattr(combiner, '__call__')
         self.combiner = combiner
-        assert isinstance(n_mappers, int)
-        self.n_mappers = n_mappers
-        assert isinstance(n_reducers, int)
-        self.n_reducers = n_reducers
 
 
 class MRSettings(object):
-    def __init__(self, input_files, output_dir, tmp_dir, 
-                 exec_script, use_domino=False, 
-                 n_concurrent_machines=2, n_shards_per_machine=4):
+    def __init__(self, input_files, output_dir, tmp_dir, use_domino=False,
+                 n_concurrent_machines=2, n_shards_per_machine=4,
+                 step_config=None):
 
-        self.exec_script = exec_script
         assert isinstance(input_files, list)
         self.input_files = input_files
         assert isinstance(output_dir, str)
@@ -69,10 +32,28 @@ class MRSettings(object):
         self.tmp_dir = tmp_dir
         assert isinstance(use_domino, bool)
         self.use_domino = use_domino
+        assert isinstance(step_config, dict)
+        self.step_config = step_config
         assert isinstance(n_concurrent_machines, int)
         self.n_concurrent_machines = n_concurrent_machines
         assert isinstance(n_shards_per_machine, int)
         self.n_shards_per_machine = n_shards_per_machine
+
+
+def create_exec_script(tmp_dir):
+    """
+    Creates an exec script to allow execution of `python -m` lines with
+    Domino
+
+    The sole reason this script exists is because DominoUp CLI launcher does
+    not accept interpreter name as its first parameter
+    """
+    exec_script = os.path.join(tmp_dir, 'exec.sh')
+    with open(exec_script, 'w') as fhandle:
+        fhandle.write("#!/bin/bash\nexec python -m $*\n")
+    curr_stat = os.stat(exec_script)
+    os.chmod(exec_script, curr_stat.st_mode | stat.S_IEXEC)
+    return exec_script
 
 
 def mapreduce(job_class):
@@ -84,15 +65,17 @@ def mapreduce(job_class):
     tmp_root = job._settings.tmp_dir
     if not os.path.exists(tmp_root):
         os.makedirs(tmp_root)
+
+    exec_script = create_exec_script(tmp_root)
     tmp_dirs = [mkdtemp(dir=tmp_root, prefix="step%d." % i)
                 for i in range(step_count)]
 
     input_file_lists = [job._settings.input_files]
-    for step, out_dir in zip(job._steps, tmp_dirs):
-        n_reducers = step.n_reducers
-        reduce_format = os.path.join(out_dir, 'reduce.out.%d')
-        ff = [reduce_format % n for n in range(n_reducers)]
-        input_file_lists.append(ff)
+    for i, (step, out_dir) in enumerate(zip(job._steps, tmp_dirs)):
+        step_config = job._settings.step_config[i]
+        n_reducers = step_config.get('n_reducers') or 1
+        reduce_format = os.path.join(out_dir, PREFIX_REDUCE_OUT + '.%d')
+        input_file_lists.append([reduce_format % n for n in range(n_reducers)])
 
     logger.info("Input files: {}".format(input_file_lists))
 
@@ -102,34 +85,39 @@ def mapreduce(job_class):
         os.makedirs(output_dir)
 
     for i, step in enumerate(job._steps):
+        step_config = job._settings.step_config[i]
+        n_mappers = step_config.get('n_mappers') or 1
+        n_reducers = step_config.get('n_reducers') or 1
         cmd_opts = [
-            job._settings.exec_script, 'mrdomino.step',
-            '--step_idx', i,
-            '--total_steps', step_count,
+            '--step_idx', str(i),
+            '--total_steps', str(step_count),
             '--input_files', ' '.join(input_file_lists[i]),
             '--work_dir', tmp_dirs[i],
-            '--exec_script', job._settings.exec_script,
+            '--exec_script', exec_script,
+            '--n_mappers', str(n_mappers),
+            '--n_reducers', str(n_reducers),
             '--output_dir', output_dir,
             '--job_module', sys.modules[job.__module__].__file__,
             '--job_class', job.__class__.__name__,
-            '--use_domino', int(job._settings.use_domino),
-            '--n_concurrent_machines', job._settings.n_concurrent_machines,
-            '--n_shards_per_machine', job._settings.n_shards_per_machine
+            '--use_domino', str(int(job._settings.use_domino)),
+            '--n_concurrent_machines',
+            str(job._settings.n_concurrent_machines),
+            '--n_shards_per_machine', str(job._settings.n_shards_per_machine)
         ]
-
-        cmd = util.create_cmd(cmd_opts)
-        logger.info("Starting step %d with command: %s" % (i, cmd))
-        util.wait_cmd(cmd, logger, "Step %d" % i)
+        logger.info("Starting step %d with options: %s" % (i, cmd_opts))
+        run_step(step_args(cmd_opts))
     logger.info('All done.')
 
 
 class MRJob(object):
 
+    __metaclass__ = abc.ABCMeta
+
     INPUT_PROTOCOL = protocol.JSONValueProtocol
     INTERNAL_PROTOCOL = protocol.JSONProtocol
     OUTPUT_PROTOCOL = protocol.JSONValueProtocol
 
-    def __init__(self, counters=None):
+    def __init__(self):
         self._settings = self.settings()
         self._steps = self.steps()
         self._counters = MRCounter()
@@ -138,11 +126,11 @@ class MRJob(object):
     def run(cls):
         mapreduce(cls)
 
-    @abstractmethod
+    @abc.abstractmethod
     def steps(self):
         """define steps necessary to run the job"""
 
-    @abstractmethod
+    @abc.abstractmethod
     def settings(self):
         """define settings"""
 

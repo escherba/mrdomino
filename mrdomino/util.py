@@ -3,12 +3,43 @@ import json
 import time
 import gzip
 import re
-import subprocess
+import imp
 import operator
+import logging
+import sys
 import functools
 
 
 NestedCounter = functools.partial(collections.defaultdict, collections.Counter)
+
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+handler = logging.StreamHandler(sys.stderr)
+formatter = logging.Formatter('%(asctime)s: %(levelname)s: %(message)s')
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+
+
+class protocol(object):
+    JSONProtocol = 0
+    JSONValueProtocol = 1
+    PickleProtocol = 2       # unsupported
+    PickleValueProtocol = 3  # unsupported
+    RawProtocol = 4          # unsupported
+    RawValueProtocol = 5     # unsupported
+    ReprProtocol = 6         # unsupported
+    ReprValueProtocol = 7    # unsupported
+
+
+def get_instance(args):
+    job_module = imp.load_source('job_module', args.job_module)
+    job_class = getattr(job_module, args.job_class)
+    return job_class()
+
+
+def get_step(args):
+    return get_instance(args).steps()[args.step_idx]
 
 
 class MRCounter(collections.Iterable):
@@ -26,7 +57,7 @@ class MRCounter(collections.Iterable):
     def incr(self, key, sub_key, incr):
         self.counter[key][sub_key] += incr
 
-    def __iadd__(self, d):
+    def __iadd__(self, counter2):
         """Add another counter (allows += operator)
 
         >>> c = MRCounter()
@@ -41,7 +72,7 @@ class MRCounter(collections.Iterable):
 
         """
         counter = self.counter
-        for key, val in d.iteritems():
+        for key, val in counter2.iteritems():
             counter[key].update(val)
         return self
 
@@ -130,35 +161,6 @@ class MRTimer(object):
     def __str__(self):
         return "clock: %0.03f sec, wall: %0.03f sec." \
             % (self.clock_interval, self.wall_interval)
-
-
-def wait_cmd(cmd, logger, name="Command"):
-    """Execute command and wait for it to finish"""
-    try:
-        with MRTimer() as timer:
-            retcode = subprocess.call(cmd, shell=True)
-        if retcode < 0:
-            logger.error("{} terminated by signal {}".format(name, -retcode))
-        else:
-            logger.info(
-                "{} finished with status code {}".format(name, retcode))
-        logger.info("{} run stats: {}".format(name, str(timer)))
-    except OSError as error:
-        logger.error("{} failed: {}".format(name, error))
-    return retcode
-
-
-def create_cmd(parts):
-    """Join together a command line represented as list"""
-    sane_parts = []
-    for part in parts:
-        if not isinstance(part, str):
-            # note: python subprocess module raises a TypeError instead
-            # of converting everything to string
-            part = str(part)
-        sane_parts.append(part)
-
-    return ' '.join(sane_parts)
 
 
 def read_files(filenames):
