@@ -69,7 +69,6 @@ class MRSummary(MRJob):
     def settings(self):
         return MRSettings(
             input_files=glob.glob(sys.argv[1]),
-            exec_script=sys.argv[2],
             output_dir='out',
             tmp_dir='tmp',
             use_domino=False,

@@ -1,7 +1,8 @@
 import os
 import sys
+import abc
+import stat
 from tempfile import mkdtemp
-from abc import abstractmethod
 from mrdomino.util import MRCounter, protocol, logger
 from mrdomino.step import run_step, parse_args as step_args, PREFIX_REDUCE_OUT
 
@@ -24,11 +25,9 @@ class MRStep(object):
 
 
 class MRSettings(object):
-    def __init__(self, input_files, output_dir, tmp_dir,
-                 exec_script, use_domino=False,
+    def __init__(self, input_files, output_dir, tmp_dir, use_domino=False,
                  n_concurrent_machines=2, n_shards_per_machine=4):
 
-        self.exec_script = exec_script
         assert isinstance(input_files, list)
         self.input_files = input_files
         assert isinstance(output_dir, str)
@@ -43,6 +42,22 @@ class MRSettings(object):
         self.n_shards_per_machine = n_shards_per_machine
 
 
+def create_exec_script(tmp_dir):
+    """
+    Creates an exec script to allow execution of `python -m` lines with
+    Domino
+
+    The sole reason this script exists is because DominoUp CLI launcher does
+    not accept interpreter name as its first parameter
+    """
+    exec_script = os.path.join(tmp_dir, 'exec.sh')
+    with open(exec_script, 'w') as fhandle:
+        fhandle.write("#!/bin/bash\nexec python -m $*\n")
+    curr_stat = os.stat(exec_script)
+    os.chmod(exec_script, curr_stat.st_mode | stat.S_IEXEC)
+    return exec_script
+
+
 def mapreduce(job_class):
 
     job = job_class()
@@ -52,6 +67,8 @@ def mapreduce(job_class):
     tmp_root = job._settings.tmp_dir
     if not os.path.exists(tmp_root):
         os.makedirs(tmp_root)
+
+    exec_script = create_exec_script(tmp_root)
     tmp_dirs = [mkdtemp(dir=tmp_root, prefix="step%d." % i)
                 for i in range(step_count)]
 
@@ -59,8 +76,7 @@ def mapreduce(job_class):
     for step, out_dir in zip(job._steps, tmp_dirs):
         n_reducers = step.n_reducers
         reduce_format = os.path.join(out_dir, PREFIX_REDUCE_OUT + '.%d')
-        ff = [reduce_format % n for n in range(n_reducers)]
-        input_file_lists.append(ff)
+        input_file_lists.append([reduce_format % n for n in range(n_reducers)])
 
     logger.info("Input files: {}".format(input_file_lists))
 
@@ -75,12 +91,13 @@ def mapreduce(job_class):
             '--total_steps', str(step_count),
             '--input_files', ' '.join(input_file_lists[i]),
             '--work_dir', tmp_dirs[i],
-            '--exec_script', job._settings.exec_script,
+            '--exec_script', exec_script,
             '--output_dir', output_dir,
             '--job_module', sys.modules[job.__module__].__file__,
             '--job_class', job.__class__.__name__,
             '--use_domino', str(int(job._settings.use_domino)),
-            '--n_concurrent_machines', str(job._settings.n_concurrent_machines),
+            '--n_concurrent_machines',
+            str(job._settings.n_concurrent_machines),
             '--n_shards_per_machine', str(job._settings.n_shards_per_machine)
         ]
         logger.info("Starting step %d with options: %s" % (i, cmd_opts))
@@ -90,11 +107,13 @@ def mapreduce(job_class):
 
 class MRJob(object):
 
+    __metaclass__ = abc.ABCMeta
+
     INPUT_PROTOCOL = protocol.JSONValueProtocol
     INTERNAL_PROTOCOL = protocol.JSONProtocol
     OUTPUT_PROTOCOL = protocol.JSONValueProtocol
 
-    def __init__(self, counters=None):
+    def __init__(self):
         self._settings = self.settings()
         self._steps = self.steps()
         self._counters = MRCounter()
@@ -103,11 +122,11 @@ class MRJob(object):
     def run(cls):
         mapreduce(cls)
 
-    @abstractmethod
+    @abc.abstractmethod
     def steps(self):
         """define steps necessary to run the job"""
 
-    @abstractmethod
+    @abc.abstractmethod
     def settings(self):
         """define settings"""
 

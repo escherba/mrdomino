@@ -140,8 +140,7 @@ def schedule_machines(args, cmd, done_file_pattern, n_shards):
 
     def wrap_cmd(command, use_domino):
         if use_domino:
-            prefix = [DOMINO_EXEC, 'run', '--no-sync',
-                      os.path.basename(args.exec_script)]
+            prefix = [DOMINO_EXEC, 'run', '--no-sync', args.exec_script]
         else:
             prefix = [args.exec_script]
         return prefix + command
