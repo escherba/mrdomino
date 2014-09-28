@@ -38,10 +38,6 @@ def get_instance(args):
     return job_class()
 
 
-def get_step(args):
-    return get_instance(args).steps()[args.step_idx]
-
-
 class MRCounter(collections.Iterable):
     """Two-story counter
     """
