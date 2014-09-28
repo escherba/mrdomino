@@ -3,7 +3,8 @@ import math
 import itertools
 from os.path import join as path_join
 from subprocess import Popen, PIPE
-from mrdomino.util import open_input, logger, get_instance, protocol
+from mrdomino.util import open_input, logger, get_instance, protocol, \
+    format_cmd
 
 
 def each_input_line(input_files, shard, n_shards):
@@ -46,13 +47,15 @@ def map(shard, args):
         proc_sort = Popen(['sort', '-o', out_fn], bufsize=4096, stdin=PIPE)
         proc = proc_sort
     else:
-        cmd_opts = ['python', '-m', 'mrdomino.combine',
-                    '--job_module', args.job_module,
-                    '--job_class', args.job_class,
-                    '--step_idx', str(args.step_idx),
-                    '--work_dir', args.work_dir,
-                    '--output_prefix', args.output_prefix,
-                    '--shard', str(shard)]
+        cmd_opts = format_cmd([
+            'python', '-m', 'mrdomino.combine',
+            '--job_module', args.job_module,
+            '--job_class', args.job_class,
+            '--step_idx', args.step_idx,
+            '--work_dir', args.work_dir,
+            '--output_prefix', args.output_prefix,
+            '--shard', shard
+        ])
         logger.info("mapper {}: starting combiner: {}"
                     .format(shard, cmd_opts))
         proc_combine = Popen(cmd_opts, bufsize=4096, stdin=PIPE)

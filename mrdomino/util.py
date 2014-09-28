@@ -38,6 +38,25 @@ def get_instance(args):
     return job_class()
 
 
+def format_cmd(opts):
+    """Create list of options for use with Popen"""
+    result = []
+    for opt in opts:
+        if isinstance(opt, str):
+            result.append(opt)
+        elif isinstance(opt, list):
+            # recurse one level down only
+            for subopt in opt:
+                if isinstance(subopt, str):
+                    result.append(subopt)
+                else:
+                    result.append(str(subopt))
+        else:
+            # any other type: simply convert to str
+            result.append(str(opt))
+    return result
+
+
 class MRCounter(collections.Iterable):
     """Two-story counter
     """
