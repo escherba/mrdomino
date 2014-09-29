@@ -3,4 +3,4 @@ include LICENSE
 include tests/*.py
 include setup.py
 include requirements*.txt
-include README.md
+include README.rst
