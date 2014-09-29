@@ -24,8 +24,8 @@ def parse_args(args=None):
     parser = ArgumentParser()
     parser.add_argument('--input_files', type=str, nargs='+', required=True,
                         help='list of input files to mappers')
-    parser.add_argument('--output_dir', type=str, default='out',
-                        help='directory to write output files to')
+    parser.add_argument('--output', type=str, default='-',
+                        help='file path to write output to')
     parser.add_argument('--work_dir', type=str, required=True,
                         help='temporary working directory')
     parser.add_argument('--exec_script', type=str, required=True,
@@ -40,12 +40,16 @@ def parse_args(args=None):
                         help='Index of this step (zero-base)')
     parser.add_argument('--total_steps', type=int, required=True,
                         help='total number of steps')
-    parser.add_argument('--use_domino', type=int, default=1,
-                        help='which platform to run on (local or domino)')
+    parser.add_argument('--use_domino', type=int, default=0,
+                        help='whether to run on Domino platform')
+    parser.add_argument('--no_clean', type=int, default=0,
+                        help='do not clean temporary files')
+    parser.add_argument('--sync_domino', type=int, default=0,
+                        help='call Domino CLI with no-sync option')
     parser.add_argument('--n_concurrent_machines', type=int, default=2,
                         help='maximum number of domino jobs to be running '
                         'at once')
-    parser.add_argument('--n_shards_per_machine', type=int, default=1,
+    parser.add_argument('--n_shards_per_machine', type=int, default=4,
                         help='number of processes to spawn per domino job '
                         '(-1 for all)')
     parser.add_argument('--poll_done_interval_sec', type=int, default=45,
@@ -135,9 +139,12 @@ def show_shard_state(shard2state, n_shards_per_machine):
 
 def schedule_machines(args, cmd, done_file_pattern, n_shards):
 
-    def wrap_cmd(command, use_domino):
-        if use_domino:
-            prefix = [DOMINO_EXEC, 'run', '--no-sync', args.exec_script]
+    def wrap_cmd(command):
+        if args.use_domino:
+            if args.sync_domino:
+                prefix = [DOMINO_EXEC, 'run', args.exec_script]
+            else:
+                prefix = [DOMINO_EXEC, 'run', '--no-sync', args.exec_script]
         else:
             prefix = [args.exec_script]
         return prefix + command
@@ -146,8 +153,9 @@ def schedule_machines(args, cmd, done_file_pattern, n_shards):
         range(n_shards),
         [ShardState.NOT_STARTED] * n_shards))
 
-    # upload everything before we start, since subtasks are run with --no-sync
-    if args.use_domino:
+    if args.use_domino and not args.sync_domino:
+        # upload everything before we start, since subtasks are run with
+        # --no-sync
         proc = subprocess.Popen([DOMINO_EXEC, 'sync'])
         proc.communicate()
 
@@ -172,8 +180,7 @@ def schedule_machines(args, cmd, done_file_pattern, n_shards):
         procs = []
         for shards in start_me:
             # execute command.
-            cmd_lst = wrap_cmd(cmd + ['--shards', ','.join(map(str, shards))],
-                               args.use_domino)
+            cmd_lst = wrap_cmd(cmd + ['--shards', ','.join(map(str, shards))])
             logger.info("Starting process: {}".format(' '.join(cmd_lst)))
             proc = subprocess.Popen(cmd_lst)
             procs.append(proc)
@@ -224,12 +231,13 @@ def run_step(args):
         done_file_pattern=os.path.join(work_dir, 'map.done.%d'),
         n_shards=args.n_mappers)
 
-    # clean up mapper inputs if step_idx > 0
-    if args.step_idx > 0:
-        logger.info('Deleting mapper inputs')
-        for fname in args.input_files:
-            logger.info('    Deleting %s', fname)
-            os.unlink(fname)
+    if not args.no_clean:
+        # clean up mapper inputs if step_idx > 0
+        if args.step_idx > 0:
+            logger.info('Deleting mapper inputs')
+            for fname in args.input_files:
+                logger.info('    Deleting %s', fname)
+                os.unlink(fname)
 
     # shuffle mapper outputs to reducer inputs
     logger.info("Shuffling...")
@@ -243,12 +251,13 @@ def run_step(args):
         '--n_reducers', args.n_reducers
     ])))
 
-    # clean up mapper outputs
-    logger.info('Deleting mapper outputs')
-    mapper_out_glob = os.path.join(work_dir, PREFIX_MAP_OUT) + '.[0-9]*'
-    for fname in glob(mapper_out_glob):
-        logger.info('    Deleting %s', fname)
-        os.unlink(fname)
+    if not args.no_clean:
+        # clean up mapper outputs
+        logger.info('Deleting mapper outputs')
+        mapper_out_glob = os.path.join(work_dir, PREFIX_MAP_OUT) + '.[0-9]*'
+        for fname in glob(mapper_out_glob):
+            logger.info('    Deleting %s', fname)
+            os.unlink(fname)
 
     # perform reduction
     logger.info('Starting %d reducers.', args.n_reducers)
@@ -272,12 +281,13 @@ def run_step(args):
         work_dir, args.n_mappers, args.n_reducers)
     logger.info('Step %d counters:\n%s', args.step_idx, counter.show())
 
-    # clean up reducer inputs
-    logger.info('Deleting reducer inputs')
-    reducer_in_glob = os.path.join(work_dir, PREFIX_REDUCE_IN) + '.[0-9]*'
-    for fname in glob(reducer_in_glob):
-        logger.info('    Deleting %s', fname)
-        os.unlink(fname)
+    if not args.no_clean:
+        # clean up reducer inputs
+        logger.info('Deleting reducer inputs')
+        reducer_in_glob = os.path.join(work_dir, PREFIX_REDUCE_IN) + '.[0-9]*'
+        for fname in glob(reducer_in_glob):
+            logger.info('    Deleting %s', fname)
+            os.unlink(fname)
 
     if args.step_idx == args.total_steps - 1:
 
@@ -309,21 +319,28 @@ def run_step(args):
             if match is not None:
                 presorted.append((int(match.group(1)), filename))
         filenames = [filename[1] for filename in sorted(presorted)]
-        out_f = os.path.join(args.output_dir, 'reduce.out')
-        with open(out_f, 'w') as out_fh:
+
+        def write_to_fhandle(fhandle):
             for key_value in read_lines(filenames):
                 if unpack_tuple:
                     _, value = json.loads(key_value)
                     value = json.dumps(value) + "\n"
                 else:
                     value = key_value
-                out_fh.write(value)
+                fhandle.write(value)
 
-        # clean up reducer outputs
-        logger.info('Deleting reducer outputs')
-        for fname in filenames:
-            logger.info('    Deleting %s', fname)
-            os.unlink(fname)
+        if args.output != '-':
+            with open(args.output, 'w') as out_fh:
+                write_to_fhandle(out_fh)
+        else:
+            write_to_fhandle(sys.stdout)
+
+        if not args.no_clean:
+            # clean up reducer outputs
+            logger.info('Deleting reducer outputs')
+            for fname in filenames:
+                logger.info('    Deleting %s', fname)
+                os.unlink(fname)
 
     # done.
     logger.info('Mapreduce step done.')

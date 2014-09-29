@@ -44,18 +44,10 @@ class MyMapReduceJob(MRJob):
         ]
 
     def settings(self):
-        return MRSettings(
-            input_files=glob.glob('data/*.gz'),
-            output_dir='out',
-            tmp_dir='tmp',
-            use_domino=False,
-            n_concurrent_machines=3,
-            n_shards_per_machine=3,
-            step_config={
-                0: dict(n_mappers=6, n_reducers=3),
-                1: dict(n_mappers=4, n_reducers=2)
-            }
-        )
+        return [
+            '--tmp_dir', 'tmp',
+            '--step_config', ['6:3', '4:2']
+        ]
 
 
 MyMapReduceJob.run()

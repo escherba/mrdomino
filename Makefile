@@ -6,7 +6,10 @@ PYTHON = $(PYENV) python
 PYTHON_TIMED = $(PYENV) time python
 
 run: dev
-	$(PYTHON) examples/example.py data/2014-01-18.detail.10000
+	mkdir -p out
+	$(PYTHON) examples/example.py \
+		--use_domino \
+		data/2014-01-18.detail.10000
 
 package: env
 	$(PYTHON) setup.py bdist_egg

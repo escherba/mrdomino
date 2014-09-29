@@ -1,7 +1,5 @@
 import re
-import glob
-import sys
-from mrdomino import MRJob, MRStep, MRSettings, protocol as mr_protocol
+from mrdomino import MRJob, MRStep, protocol as mr_protocol
 
 
 def get_tld(domain):
@@ -63,18 +61,10 @@ class MRSummary(MRJob):
         ]
 
     def settings(self):
-        return MRSettings(
-            input_files=glob.glob(sys.argv[1]),
-            output_dir='out',
-            tmp_dir='tmp',
-            use_domino=False,
-            n_concurrent_machines=2,
-            n_shards_per_machine=3,
-            step_config={
-                0: dict(n_mappers=6, n_reducers=3),
-                1: dict(n_mappers=4, n_reducers=2)
-            }
-        )
+        return [
+            '--tmp_dir', 'tmp',
+            '--step_config', ['6:3', '4:2']
+        ]
 
 
 if __name__ == '__main__':

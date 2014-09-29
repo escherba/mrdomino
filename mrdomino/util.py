@@ -49,8 +49,12 @@ def format_cmd(opts):
             for subopt in opt:
                 if isinstance(subopt, str):
                     result.append(subopt)
+                elif isinstance(subopt, bool):
+                    result.append(str(int(subopt)))
                 else:
                     result.append(str(subopt))
+        elif isinstance(opt, bool):
+            result.append(str(int(opt)))
         else:
             # any other type: simply convert to str
             result.append(str(opt))
