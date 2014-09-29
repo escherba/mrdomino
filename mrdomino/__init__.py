@@ -10,7 +10,7 @@ from mrdomino.step import run_step, parse_args as step_args, PREFIX_REDUCE_OUT
 __version__ = '0.1.0'
 
 
-def parse_args(args=None, namespace=None, known=True):
+def parse_args(args=None, namespace=None, known=True, help=False):
     parser = argparse.ArgumentParser()
     parser.add_argument('--output', type=str, default='-',
                         help='file to write output to')
@@ -32,6 +32,10 @@ def parse_args(args=None, namespace=None, known=True):
                         help="comma-delimited string of tuples"
                         " where 1st integer is numer of mappers, 2nd number "
                         "of reducers")
+
+    if help:
+        parser.print_help()
+        return
 
     if known:
         namespace, input_files = parser.parse_known_args(
@@ -73,7 +77,14 @@ def create_exec_script(tmp_dir):
 def mapreduce(job_class):
 
     job = job_class()
-    step_count = len(job._steps)
+    input_files = job._input_files
+    all_steps = job._steps
+    step_count = len(all_steps)
+
+    if len(input_files) == 0 or step_count == 0:
+        logger.warn("Nothing to be done")
+        parse_args(help=True)
+        return
 
     # if temporary directory root does not exist, create one
     tmp_root = job._settings.tmp_dir
@@ -84,8 +95,8 @@ def mapreduce(job_class):
     tmp_dirs = [mkdtemp(dir=tmp_root, prefix="step%d." % i)
                 for i in range(step_count)]
 
-    input_file_lists = [job._input_files]
-    for i, (step, out_dir) in enumerate(zip(job._steps, tmp_dirs)):
+    input_file_lists = [input_files]
+    for i, (step, out_dir) in enumerate(zip(all_steps, tmp_dirs)):
         step_config = map(int, job._settings.step_config[i].split(':'))
         n_reducers = step_config[1]
         reduce_format = os.path.join(out_dir, PREFIX_REDUCE_OUT + '.%d')
@@ -93,7 +104,7 @@ def mapreduce(job_class):
 
     logger.info("Input files: {}".format(input_file_lists))
 
-    for i, step in enumerate(job._steps):
+    for i, step in enumerate(all_steps):
         step_config = map(int, job._settings.step_config[i].split(':'))
         n_mappers = step_config[0]
         n_reducers = step_config[1]
@@ -114,9 +125,7 @@ def mapreduce(job_class):
             '--n_concurrent_machines', job._settings.n_concurrent_machines,
             '--n_shards_per_machine', job._settings.n_shards_per_machine
         ])
-        logger.info("Starting step %d with options: %s", i, cmd_opts)
         run_step(step_args(cmd_opts))
-    logger.info('All done.')
 
 
 class MRJob(object):
