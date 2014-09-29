@@ -3,49 +3,60 @@ import os
 import re
 import time
 import json
-from os.path import join as path_join
+import sys
+import subprocess
 from glob import glob
 from itertools import imap
-from mrdomino import logger, get_step, get_instance, protocol
-from mrdomino.util import MRCounter, create_cmd, read_files, read_lines, \
-    wait_cmd
+from mrdomino import map_one_machine, reduce_one_machine
+from mrdomino.shuffle import run_shuffle, parse_args as shuffle_args
+from mrdomino.util import MRCounter, read_files, read_lines, get_instance, \
+    protocol, logger, format_cmd
 
 
-def parse_args():
+DOMINO_EXEC = 'domino'
+
+PREFIX_MAP_OUT = 'map.out'
+PREFIX_REDUCE_IN = 'reduce.in'
+PREFIX_REDUCE_OUT = 'reduce.out'
+
+
+def parse_args(args=None):
     parser = ArgumentParser()
-    parser.add_argument('--input_files', type=str, nargs='+',
+    parser.add_argument('--input_files', type=str, nargs='+', required=True,
                         help='list of input files to mappers')
-    parser.add_argument('--output_dir', type=str, default='out',
-                        help='directory to write output files to')
+    parser.add_argument('--output', type=str, default='-',
+                        help='file path to write output to')
     parser.add_argument('--work_dir', type=str, required=True,
                         help='temporary working directory')
     parser.add_argument('--exec_script', type=str, required=True,
                         help='script to use for execution')
     parser.add_argument('--job_module', type=str, required=True)
     parser.add_argument('--job_class', type=str, required=True)
+    parser.add_argument('--n_mappers', type=int, default=1,
+                        help="number of mappers")
+    parser.add_argument('--n_reducers', type=int, default=1,
+                        help="number of reducers")
     parser.add_argument('--step_idx', type=int, required=True,
                         help='Index of this step (zero-base)')
     parser.add_argument('--total_steps', type=int, required=True,
                         help='total number of steps')
-    parser.add_argument('--use_domino', type=int, default=1,
-                        help='which platform to run on (local or domino)')
+    parser.add_argument('--use_domino', type=int, default=0,
+                        help='whether to run on Domino platform')
+    parser.add_argument('--no_clean', type=int, default=0,
+                        help='do not clean temporary files')
+    parser.add_argument('--sync_domino', type=int, default=0,
+                        help='call Domino CLI with no-sync option')
     parser.add_argument('--n_concurrent_machines', type=int, default=2,
                         help='maximum number of domino jobs to be running '
                         'at once')
-    parser.add_argument('--n_shards_per_machine', type=int, default=1,
+    parser.add_argument('--n_shards_per_machine', type=int, default=4,
                         help='number of processes to spawn per domino job '
                         '(-1 for all)')
     parser.add_argument('--poll_done_interval_sec', type=int, default=45,
                         help='interval between successive checks that we '
                         'are done')
-    args = parser.parse_args()
-
-    # verify functions exist.
-    step = get_step(args)
-    assert step.mapper is not None
-    assert step.reducer is not None
-
-    return args
+    namespace = parser.parse_args(args)
+    return namespace
 
 
 class ShardState(object):
@@ -69,11 +80,11 @@ def combine_counters(work_dir, n_map_shards, n_reduce_shards):
              read_files(filter(os.path.exists, filenames))))
 
 
-def update_shards_done(args, done_pattern, num_shards, use_domino,
-                       shard2state):
+def update_shards_done(args, done_pattern, num_shards, shard2state):
     """go to disk and find out which shards are completed."""
     if args.use_domino:
-        os.system('domino download')
+        proc = subprocess.Popen([DOMINO_EXEC, 'download'])
+        proc.communicate()
     for i in range(num_shards):
         filename = done_pattern % i
         if os.path.isfile(filename):
@@ -104,8 +115,8 @@ def get_shard_groups_to_start(
     # get up to n_todos domino jobs to start.
     start_me = []
     count = 0
-    for i, m in enumerate(machines):
-        if m == ShardState.NOT_STARTED:
+    for i, machine in enumerate(machines):
+        if machine == ShardState.NOT_STARTED:
             machine_shards = range(i * n_shards_per_machine,
                                    (i + 1) * n_shards_per_machine)
             machine_shards = filter(lambda n: n < len(shards), machine_shards)
@@ -126,25 +137,31 @@ def show_shard_state(shard2state, n_shards_per_machine):
     return ' '.join(output)
 
 
-def schedule_machines(args, command, done_file_pattern, n_shards):
+def schedule_machines(args, cmd, done_file_pattern, n_shards):
 
-    def wrap_cmd(command, use_domino):
-        if use_domino:
-            pre = 'domino run %s ' % os.path.basename(args.exec_script)
-            post = ''
+    def wrap_cmd(command):
+        if args.use_domino:
+            if args.sync_domino:
+                prefix = [DOMINO_EXEC, 'run', args.exec_script]
+            else:
+                prefix = [DOMINO_EXEC, 'run', '--no-sync', args.exec_script]
         else:
-            pre = '%s ' % os.path.basename(args.exec_script)
-            post = ' &'
-        return '%s%s%s' % (pre, command, post)
+            prefix = [args.exec_script]
+        return prefix + command
 
     shard2state = dict(zip(
         range(n_shards),
         [ShardState.NOT_STARTED] * n_shards))
 
+    if args.use_domino and not args.sync_domino:
+        # upload everything before we start, since subtasks are run with
+        # --no-sync
+        proc = subprocess.Popen([DOMINO_EXEC, 'sync'])
+        proc.communicate()
+
     while True:
         # go to disk and look for shard done files.
-        update_shards_done(args, done_file_pattern, n_shards, args.use_domino,
-                           shard2state)
+        update_shards_done(args, done_file_pattern, n_shards, shard2state)
 
         logger.info(show_shard_state(shard2state, args.n_shards_per_machine))
 
@@ -159,83 +176,118 @@ def schedule_machines(args, command, done_file_pattern, n_shards):
         # start the jobs.
         if start_me:
             logger.info('Starting shard groups: %s', start_me)
+
+        procs = []
         for shards in start_me:
             # execute command.
-            cmd = command % ','.join(map(str, shards))
-            cmd = wrap_cmd(cmd, args.use_domino)
-            logger.info("Starting process: {}".format(cmd))
-            os.system(cmd)
+            cmd_lst = wrap_cmd(cmd + ['--shards', ','.join(map(str, shards))])
+            logger.info("Starting process: {}".format(' '.join(cmd_lst)))
+            proc = subprocess.Popen(cmd_lst)
+            procs.append(proc)
+
+            # w/o terminating, will get '.dominoignore already locked' error
+            if args.use_domino:
+                proc.communicate()
 
             # note them as started.
             for shard in shards:
                 shard2state[shard] = ShardState.IN_PROGRESS
 
-        # wait to poll.
-        time.sleep(args.poll_done_interval_sec)
+        try:
+            # wait to poll.
+            time.sleep(args.poll_done_interval_sec)
+        except KeyboardInterrupt:
+            # User pressed Ctrl-C
+            logger.warn("Keyboard interrupt received")
+            for proc in procs:
+                proc.terminate()
+            sys.exit(1)
 
 
-def main():
+def run_step(args):
 
-    args = parse_args()
-    logger.info('Mapreduce step: %s', args)
-
+    logger.info('Starting step %d with options: %s', args.step_idx, args)
     logger.info('%d input files.', len(args.input_files))
 
     work_dir = args.work_dir
     logger.info('Working directory: %s', work_dir)
 
     job = get_instance(args)
-    step = job.get_step(args.step_idx)
-    logger.info('Starting %d mappers.', step.n_mappers)
 
-    # create map command
-    cmd_opts = [
-        'mrdomino.map_one_machine',
+    # perform mapping
+    logger.info('Starting %d mappers.', args.n_mappers)
+    schedule_machines(
+        args,
+        cmd=format_cmd([
+            map_one_machine.__name__,
+            '--step_idx', args.step_idx,
+            '--input_files', args.input_files,
+            '--output_prefix', PREFIX_MAP_OUT,
+            '--job_module', args.job_module,
+            '--job_class', args.job_class,
+            '--work_dir', work_dir,
+            '--n_mappers', args.n_mappers
+        ]),
+        done_file_pattern=os.path.join(work_dir, 'map.done.%d'),
+        n_shards=args.n_mappers)
+
+    if not args.no_clean:
+        # clean up mapper inputs if step_idx > 0
+        if args.step_idx > 0:
+            logger.info('Deleting mapper inputs')
+            for fname in args.input_files:
+                logger.info('    Deleting %s', fname)
+                os.unlink(fname)
+
+    # shuffle mapper outputs to reducer inputs
+    logger.info("Shuffling...")
+    run_shuffle(shuffle_args(format_cmd([
         '--step_idx', args.step_idx,
-        '--shards', '%s',
-        '--input_files', ' '.join(args.input_files),
+        '--input_prefix', PREFIX_MAP_OUT,
+        '--output_prefix', PREFIX_REDUCE_IN,
         '--job_module', args.job_module,
         '--job_class', args.job_class,
-        '--work_dir', work_dir
-    ]
-    cmd = create_cmd(cmd_opts)
+        '--work_dir', work_dir,
+        '--n_reducers', args.n_reducers
+    ])))
 
+    if not args.no_clean:
+        # clean up mapper outputs
+        logger.info('Deleting mapper outputs')
+        mapper_out_glob = os.path.join(work_dir, PREFIX_MAP_OUT) + '.[0-9]*'
+        for fname in glob(mapper_out_glob):
+            logger.info('    Deleting %s', fname)
+            os.unlink(fname)
+
+    # perform reduction
+    logger.info('Starting %d reducers.', args.n_reducers)
     schedule_machines(
         args,
-        command=cmd,
-        done_file_pattern=os.path.join(work_dir, 'map.done.%d'),
-        n_shards=step.n_mappers)
-
-    counter = combine_counters(
-        work_dir, step.n_mappers, step.n_reducers)
-
-    # shuffle mapper outputs to reducer inputs.
-    cmd = create_cmd([args.exec_script, 'mrdomino.shuffle',
-                      '--work_dir', work_dir,
-                      '--input_prefix', 'map.out',
-                      '--output_prefix', 'reduce.in',
-                      '--job_module', args.job_module,
-                      '--job_class', args.job_class,
-                      '--step_idx', args.step_idx])
-    wait_cmd(cmd, logger, "Shuffling")
-
-    logger.info('Starting %d reducers.', step.n_reducers)
-    cmd = create_cmd(['mrdomino.reduce_one_machine',
-                      '--step_idx', args.step_idx,
-                      '--shards', '%s',
-                      '--job_module', args.job_module,
-                      '--job_class', args.job_class,
-                      '--input_prefix', 'reduce.in',
-                      '--work_dir', work_dir])
-    schedule_machines(
-        args,
-        command=cmd,
+        cmd=format_cmd([
+            reduce_one_machine.__name__,
+            '--step_idx', args.step_idx,
+            '--input_prefix', PREFIX_REDUCE_IN,
+            '--output_prefix', PREFIX_REDUCE_OUT,
+            '--job_module', args.job_module,
+            '--job_class', args.job_class,
+            '--work_dir', work_dir,
+            '--n_reducers', args.n_reducers
+        ]),
         done_file_pattern=os.path.join(work_dir, 'reduce.done.%d'),
-        n_shards=step.n_reducers)
+        n_shards=args.n_reducers)
 
+    # collect counters
     counter = combine_counters(
-        work_dir, step.n_mappers, step.n_reducers)
-    logger.info(('Step %d counters:\n' % args.step_idx) + counter.show())
+        work_dir, args.n_mappers, args.n_reducers)
+    logger.info('Step %d counters:\n%s', args.step_idx, counter.show())
+
+    if not args.no_clean:
+        # clean up reducer inputs
+        logger.info('Deleting reducer inputs')
+        reducer_in_glob = os.path.join(work_dir, PREFIX_REDUCE_IN) + '.[0-9]*'
+        for fname in glob(reducer_in_glob):
+            logger.info('    Deleting %s', fname)
+            os.unlink(fname)
 
     if args.step_idx == args.total_steps - 1:
 
@@ -259,28 +311,40 @@ def main():
                              .format(job.OUTPUT_PROTOCOL))
 
         # make sure that files are sorted by shard number
-        glob_prefix = 'reduce.out'
-        filenames = glob(path_join(work_dir, glob_prefix + '.[0-9]*'))
-        prefix_match = re.compile('.*\\b' + glob_prefix + '\\.(\\d+)$')
+        filenames = glob(os.path.join(work_dir, PREFIX_REDUCE_OUT + '.[0-9]*'))
+        prefix_match = re.compile('.*\\b' + PREFIX_REDUCE_OUT + '\\.(\\d+)$')
         presorted = []
         for filename in filenames:
             match = prefix_match.match(filename)
             if match is not None:
                 presorted.append((int(match.group(1)), filename))
         filenames = [filename[1] for filename in sorted(presorted)]
-        out_f = path_join(args.output_dir, 'reduce.out')
-        with open(out_f, 'w') as out_fh:
-            for kv in read_lines(filenames):
+
+        def write_to_fhandle(fhandle):
+            for key_value in read_lines(filenames):
                 if unpack_tuple:
-                    _, v = json.loads(kv)
-                    v = json.dumps(v) + "\n"
+                    _, value = json.loads(key_value)
+                    value = json.dumps(value) + "\n"
                 else:
-                    v = kv
-                out_fh.write(v)
+                    value = key_value
+                fhandle.write(value)
+
+        if args.output != '-':
+            with open(args.output, 'w') as out_fh:
+                write_to_fhandle(out_fh)
+        else:
+            write_to_fhandle(sys.stdout)
+
+        if not args.no_clean:
+            # clean up reducer outputs
+            logger.info('Deleting reducer outputs')
+            for fname in filenames:
+                logger.info('    Deleting %s', fname)
+                os.unlink(fname)
 
     # done.
     logger.info('Mapreduce step done.')
 
 
 if __name__ == '__main__':
-    main()
+    run_step(parse_args())
