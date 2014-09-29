@@ -18,6 +18,10 @@ def parse_args(args=None, namespace=None, known=True):
                         help='temporary working directory')
     parser.add_argument('--use_domino', action="store_true",
                         help='whether to run this on Domino')
+    parser.add_argument('--no_clean', action="store_true",
+                        help='do not clean temporary files')
+    parser.add_argument('--sync_domino', action="store_true",
+                        help='do not call Domino CLI with no-sync option')
     parser.add_argument('--n_concurrent_machines', type=int, default=2,
                         help='maximum number of domino jobs to be running '
                         'at one time')
@@ -99,6 +103,8 @@ def mapreduce(job_class):
             '--input_files', input_file_lists[i],
             '--work_dir', tmp_dirs[i],
             '--exec_script', exec_script,
+            '--no_clean', job._settings.no_clean,
+            '--sync_domino', job._settings.sync_domino,
             '--n_mappers', n_mappers,
             '--n_reducers', n_reducers,
             '--output', job._settings.output,
@@ -122,9 +128,11 @@ class MRJob(object):
     OUTPUT_PROTOCOL = protocol.JSONValueProtocol
 
     def __init__(self):
-        settings1 = parse_args(args=format_cmd(self.settings()), known=False)
-        settings2, input_files = parse_args(namespace=settings1, known=True)
-        self._settings = settings2
+        # do not allow unknown parameters from module definition
+        settings = parse_args(args=format_cmd(self.settings()), known=False)
+        # allow unknown parameters from command line
+        settings, input_files = parse_args(namespace=settings, known=True)
+        self._settings = settings
         self._input_files = input_files
         self._steps = self.steps()
         assert len(self._steps) == len(self._settings.step_config)
@@ -138,9 +146,9 @@ class MRJob(object):
     def steps(self):
         """define steps necessary to run the job"""
 
-    @abc.abstractmethod
     def settings(self):
-        """define settings"""
+        """return settings in the command line / Popen format"""
+        return []
 
     def increment_counter(self, group, counter, amount=1):
         self._counters.incr(group, counter, amount)
