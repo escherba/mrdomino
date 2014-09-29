@@ -2,11 +2,40 @@ import os
 import sys
 import abc
 import stat
+import argparse
 from tempfile import mkdtemp
 from mrdomino.util import MRCounter, protocol, logger, format_cmd
 from mrdomino.step import run_step, parse_args as step_args, PREFIX_REDUCE_OUT
 
 __version__ = '0.1.0'
+
+
+def parse_args(args=None, namespace=None, known=True):
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--output', type=str, default='-',
+                        help='file to write output to')
+    parser.add_argument('--tmp_dir', type=str, default='tmp',
+                        help='temporary working directory')
+    parser.add_argument('--use_domino', action="store_true",
+                        help='whether to run this on Domino')
+    parser.add_argument('--n_concurrent_machines', type=int, default=2,
+                        help='maximum number of domino jobs to be running '
+                        'at one time')
+    parser.add_argument('--n_shards_per_machine', type=int, default=4,
+                        help='number of processes to spawn per domino job '
+                        '(-1 for all)')
+    parser.add_argument('--step_config', type=str, nargs='+', default=[],
+                        help="comma-delimited string of tuples"
+                        " where 1st integer is numer of mappers, 2nd number "
+                        "of reducers")
+
+    if known:
+        namespace, input_files = parser.parse_known_args(
+            args=args, namespace=namespace)
+        return namespace, input_files
+    else:
+        namespace = parser.parse_args(args=args, namespace=namespace)
+        return namespace
 
 
 class MRStep(object):
@@ -19,27 +48,6 @@ class MRStep(object):
         self.reducer = reducer
         assert combiner is None or hasattr(combiner, '__call__')
         self.combiner = combiner
-
-
-class MRSettings(object):
-    def __init__(self, input_files, output_dir, tmp_dir, use_domino=False,
-                 n_concurrent_machines=2, n_shards_per_machine=4,
-                 step_config=None):
-
-        assert isinstance(input_files, list)
-        self.input_files = input_files
-        assert isinstance(output_dir, str)
-        self.output_dir = output_dir
-        assert isinstance(tmp_dir, str)
-        self.tmp_dir = tmp_dir
-        assert isinstance(use_domino, bool)
-        self.use_domino = use_domino
-        assert isinstance(step_config, dict)
-        self.step_config = step_config
-        assert isinstance(n_concurrent_machines, int)
-        self.n_concurrent_machines = n_concurrent_machines
-        assert isinstance(n_shards_per_machine, int)
-        self.n_shards_per_machine = n_shards_per_machine
 
 
 def create_exec_script(tmp_dir):
@@ -72,24 +80,19 @@ def mapreduce(job_class):
     tmp_dirs = [mkdtemp(dir=tmp_root, prefix="step%d." % i)
                 for i in range(step_count)]
 
-    input_file_lists = [job._settings.input_files]
+    input_file_lists = [job._input_files]
     for i, (step, out_dir) in enumerate(zip(job._steps, tmp_dirs)):
-        step_config = job._settings.step_config[i]
-        n_reducers = step_config.get('n_reducers') or 1
+        step_config = map(int, job._settings.step_config[i].split(':'))
+        n_reducers = step_config[1]
         reduce_format = os.path.join(out_dir, PREFIX_REDUCE_OUT + '.%d')
         input_file_lists.append([reduce_format % n for n in range(n_reducers)])
 
     logger.info("Input files: {}".format(input_file_lists))
 
-    # if output directory root does not exist, create one
-    output_dir = job._settings.output_dir
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-
     for i, step in enumerate(job._steps):
-        step_config = job._settings.step_config[i]
-        n_mappers = step_config.get('n_mappers') or 1
-        n_reducers = step_config.get('n_reducers') or 1
+        step_config = map(int, job._settings.step_config[i].split(':'))
+        n_mappers = step_config[0]
+        n_reducers = step_config[1]
         cmd_opts = format_cmd([
             '--step_idx', i,
             '--total_steps', step_count,
@@ -98,10 +101,10 @@ def mapreduce(job_class):
             '--exec_script', exec_script,
             '--n_mappers', n_mappers,
             '--n_reducers', n_reducers,
-            '--output_dir', output_dir,
+            '--output', job._settings.output,
             '--job_module', sys.modules[job.__module__].__file__,
             '--job_class', job.__class__.__name__,
-            '--use_domino', int(job._settings.use_domino),
+            '--use_domino', job._settings.use_domino,
             '--n_concurrent_machines', job._settings.n_concurrent_machines,
             '--n_shards_per_machine', job._settings.n_shards_per_machine
         ])
@@ -119,8 +122,12 @@ class MRJob(object):
     OUTPUT_PROTOCOL = protocol.JSONValueProtocol
 
     def __init__(self):
-        self._settings = self.settings()
+        settings1 = parse_args(args=format_cmd(self.settings()), known=False)
+        settings2, input_files = parse_args(namespace=settings1, known=True)
+        self._settings = settings2
+        self._input_files = input_files
         self._steps = self.steps()
+        assert len(self._steps) == len(self._settings.step_config)
         self._counters = MRCounter()
 
     @classmethod

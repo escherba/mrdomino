@@ -24,8 +24,8 @@ def parse_args(args=None):
     parser = ArgumentParser()
     parser.add_argument('--input_files', type=str, nargs='+', required=True,
                         help='list of input files to mappers')
-    parser.add_argument('--output_dir', type=str, default='out',
-                        help='directory to write output files to')
+    parser.add_argument('--output', type=str, default='-',
+                        help='file path to write output to')
     parser.add_argument('--work_dir', type=str, required=True,
                         help='temporary working directory')
     parser.add_argument('--exec_script', type=str, required=True,
@@ -309,15 +309,21 @@ def run_step(args):
             if match is not None:
                 presorted.append((int(match.group(1)), filename))
         filenames = [filename[1] for filename in sorted(presorted)]
-        out_f = os.path.join(args.output_dir, 'reduce.out')
-        with open(out_f, 'w') as out_fh:
+
+        def write_to_fhandle(fhandle):
             for key_value in read_lines(filenames):
                 if unpack_tuple:
                     _, value = json.loads(key_value)
                     value = json.dumps(value) + "\n"
                 else:
                     value = key_value
-                out_fh.write(value)
+                fhandle.write(value)
+
+        if args.output != '-':
+            with open(args.output, 'w') as out_fh:
+                write_to_fhandle(out_fh)
+        else:
+            write_to_fhandle(sys.stdout)
 
         # clean up reducer outputs
         logger.info('Deleting reducer outputs')
