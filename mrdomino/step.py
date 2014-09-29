@@ -206,7 +206,7 @@ def schedule_machines(args, cmd, done_file_pattern, n_shards):
 
 def run_step(args):
 
-    logger.info('Mapreduce step: %s', args)
+    logger.info('Starting step %d with options: %s', args.step_idx, args)
     logger.info('%d input files.', len(args.input_files))
 
     work_dir = args.work_dir
