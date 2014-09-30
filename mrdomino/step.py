@@ -15,9 +15,9 @@ from mrdomino.util import MRCounter, read_files, read_lines, get_instance, \
 
 DOMINO_EXEC = 'domino'
 
-PREFIX_MAP_OUT = 'map.out'
-PREFIX_REDUCE_IN = 'reduce.in'
-PREFIX_REDUCE_OUT = 'reduce.out'
+PREFIX_MAP_OUT = 'map-%s.out.gz'
+PREFIX_REDUCE_IN = 'reduce-%s.in.gz'
+PREFIX_REDUCE_OUT = 'reduce-%s.out.gz'
 
 
 def parse_args(args=None):
@@ -67,13 +67,13 @@ class ShardState(object):
 
 def combine_counters(work_dir, n_map_shards, n_reduce_shards):
     filenames = map(lambda (work_dir, shard):
-                    os.path.join(work_dir, 'map.counters.%d' % shard),
+                    os.path.join(work_dir, 'map-%d.counters' % shard),
                     zip([work_dir] * n_map_shards, range(n_map_shards)))
     filenames += map(lambda (work_dir, shard):
-                     os.path.join(work_dir, 'combine.counters.%d' % shard),
+                     os.path.join(work_dir, 'combine-%d.counters' % shard),
                      zip([work_dir] * n_map_shards, range(n_map_shards)))
     filenames += map(lambda (work_dir, shard):
-                     os.path.join(work_dir, 'reduce.counters.%d' % shard),
+                     os.path.join(work_dir, 'reduce-%d.counters' % shard),
                      zip([work_dir] * n_reduce_shards, range(n_reduce_shards)))
     return MRCounter.sum(
         imap(MRCounter.deserialize,
@@ -81,7 +81,7 @@ def combine_counters(work_dir, n_map_shards, n_reduce_shards):
 
 
 def update_shards_done(args, done_pattern, num_shards, shard2state):
-    """go to disk and find out which shards are completed."""
+    """go to disk and determine which shards are completed"""
     if args.use_domino:
         proc = subprocess.Popen([DOMINO_EXEC, 'download'])
         proc.communicate()
@@ -228,7 +228,7 @@ def run_step(args):
             '--work_dir', work_dir,
             '--n_mappers', args.n_mappers
         ]),
-        done_file_pattern=os.path.join(work_dir, 'map.done.%d'),
+        done_file_pattern=os.path.join(work_dir, 'map-%d.done'),
         n_shards=args.n_mappers)
 
     if not args.no_clean:
@@ -273,7 +273,7 @@ def run_step(args):
             '--work_dir', work_dir,
             '--n_reducers', args.n_reducers
         ]),
-        done_file_pattern=os.path.join(work_dir, 'reduce.done.%d'),
+        done_file_pattern=os.path.join(work_dir, 'reduce-%d.done'),
         n_shards=args.n_reducers)
 
     # collect counters
@@ -311,8 +311,8 @@ def run_step(args):
                              .format(job.OUTPUT_PROTOCOL))
 
         # make sure that files are sorted by shard number
-        filenames = glob(os.path.join(work_dir, PREFIX_REDUCE_OUT + '.[0-9]*'))
-        prefix_match = re.compile('.*\\b' + PREFIX_REDUCE_OUT + '\\.(\\d+)$')
+        filenames = glob(os.path.join(work_dir, PREFIX_REDUCE_OUT % '[0-9]*'))
+        prefix_match = re.compile('.*\\b' + (PREFIX_REDUCE_OUT % '(\\d+)') + '$')
         presorted = []
         for filename in filenames:
             match = prefix_match.match(filename)

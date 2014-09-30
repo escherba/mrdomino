@@ -20,7 +20,7 @@ def parse_args():
                         help='directory containing reduce input files')
     parser.add_argument('--input_prefix', type=str, default=None,
                         help='string that input files are prefixed with')
-    parser.add_argument('--output_prefix', type=str, default='reduce.out',
+    parser.add_argument('--output_prefix', type=str, default='reduce.out.gz',
                         help='string to prefix output files')
     namespace = parser.parse_args()
     return namespace

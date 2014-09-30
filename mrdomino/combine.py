@@ -2,29 +2,28 @@ import sys
 import json
 from os.path import join as path_join
 from argparse import ArgumentParser, FileType
-from mrdomino.util import logger, get_instance
+from mrdomino.util import logger, get_instance, open_gz
 
 
 def parse_args():
-    ap = ArgumentParser()
-    ap.add_argument('--job_module', type=str, required=True)
-    ap.add_argument('--job_class', type=str, required=True)
-    ap.add_argument('--step_idx', type=int, required=True)
-    ap.add_argument('--input', type=FileType('r'), default=sys.stdin,
-                    help='string that input files are prefixed with')
-    ap.add_argument('--work_dir', type=str, required=True,
-                    help='directory containing map output files')
-    ap.add_argument('--output_prefix', type=str, default='map.out',
-                    help='string to prefix output files')
-    ap.add_argument('--shard', type=int, required=True,
-                    help='which shart are we at')
+    parser = ArgumentParser()
+    parser.add_argument('--job_module', type=str, required=True)
+    parser.add_argument('--job_class', type=str, required=True)
+    parser.add_argument('--step_idx', type=int, required=True)
+    parser.add_argument('--input', type=FileType('r'), default=sys.stdin,
+                        help='string that input files are prefixed with')
+    parser.add_argument('--work_dir', type=str, required=True,
+                        help='directory containing map output files')
+    parser.add_argument('--output_prefix', type=str, default='map.out.gz',
+                        help='string to prefix output files')
+    parser.add_argument('--shard', type=int, required=True,
+                        help='which shart are we at')
 
-    args = ap.parse_args()
-    return args
+    namespace = parser.parse_args()
+    return namespace
 
 
-def main():
-    args = parse_args()
+def run(args):
 
     # find the combine function.
     job = get_instance(args)
@@ -33,7 +32,7 @@ def main():
 
     shard = args.shard
     in_fh = args.input
-    out_fn = path_join(args.work_dir, args.output_prefix + '.%d' % shard)
+    out_fn = path_join(args.work_dir, args.output_prefix % str(shard))
     logger.info("combiner {}: output -> {}".format(shard, out_fn))
 
     last_key = None
@@ -41,7 +40,7 @@ def main():
 
     count_written = 0
     count_seen = 0
-    with open(out_fn, 'w') as out_fh:
+    with open_gz(out_fn, 'w') as out_fh:
         for line in in_fh:
             count_seen += 1
             key, value = json.loads(line)
@@ -68,18 +67,18 @@ def main():
     counters.incr("combiner", "seen", count_seen)
     counters.incr("combiner", "written", count_written)
 
-    # write out the counters to file.
-    f = path_join(args.work_dir, 'combine.counters.%d' % shard)
-    logger.info("combiner {}: counters -> {}".format(shard, f))
-    with open(f, 'w') as fh:
-        fh.write(counters.serialize())
+    # write the counters to file.
+    fname = path_join(args.work_dir, 'combine-%d.counters' % shard)
+    logger.info("combiner {}: counters -> {}".format(shard, fname))
+    with open(fname, 'w') as fhandle:
+        fhandle.write(counters.serialize())
 
     # write how many entries were written for reducer balancing purposes.
-    f = path_join(args.work_dir, args.output_prefix + '_count.%d' % shard)
-    logger.info("combiner {}: lines written -> {}".format(shard, f))
-    with open(f, 'w') as fh:
-        fh.write(str(count_written))
+    fname = path_join(args.work_dir, (args.output_prefix % str(shard)) + '.count')
+    logger.info("combiner {}: lines written -> {}".format(shard, fname))
+    with open(fname, 'w') as fhandle:
+        fhandle.write(str(count_written))
 
 
 if __name__ == '__main__':
-    main()
+    run(parse_args())

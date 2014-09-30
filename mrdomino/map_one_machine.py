@@ -20,7 +20,7 @@ def parse_args():
     parser.add_argument('--job_class', type=str, required=True)
     parser.add_argument('--work_dir', type=str, required=True,
                         help='directory containing map output files')
-    parser.add_argument('--output_prefix', type=str, default='map.out',
+    parser.add_argument('--output_prefix', type=str, default='map.out.gz',
                         help='string to prefix output files')
     namespace = parser.parse_args()
     return namespace
