@@ -14,7 +14,7 @@ def parse_args():
                     help='string that input files are prefixed with')
     ap.add_argument('--work_dir', type=str, required=True,
                     help='directory containing map output files')
-    ap.add_argument('--output_prefix', type=str, default='map.out',
+    ap.add_argument('--output_prefix', type=str, default='map.out.gz',
                     help='string to prefix output files')
     ap.add_argument('--shard', type=int, required=True,
                     help='which shart are we at')
@@ -68,7 +68,7 @@ def main():
     counters.incr("combiner", "seen", count_seen)
     counters.incr("combiner", "written", count_written)
 
-    # write out the counters to file.
+    # write the counters to file.
     f = path_join(args.work_dir, 'combine.counters.%d' % shard)
     logger.info("combiner {}: counters -> {}".format(shard, f))
     with open(f, 'w') as fh:

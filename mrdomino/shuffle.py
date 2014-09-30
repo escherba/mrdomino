@@ -4,7 +4,7 @@ from glob import glob
 from argparse import ArgumentParser
 from os.path import join as path_join
 from itertools import imap
-from mrdomino.util import read_files, logger
+from mrdomino.util import read_files, logger, open_gz
 
 
 def parse_args(args=None):
@@ -15,9 +15,9 @@ def parse_args(args=None):
     parser.add_argument('--job_class', type=str, required=True)
     parser.add_argument('--step_idx', type=int, required=True)
     parser.add_argument('--n_reducers', type=int, required=True)
-    parser.add_argument('--input_prefix', type=str, default='map.out',
+    parser.add_argument('--input_prefix', type=str, default='map.out.gz',
                         help='string that input files are prefixed with')
-    parser.add_argument('--output_prefix', type=str, default='reduce.in',
+    parser.add_argument('--output_prefix', type=str, default='reduce.in.gz',
                         help='string to prefix output files')
     namespace = parser.parse_args(args)
     return namespace
@@ -38,12 +38,12 @@ def run_shuffle(args):
 
     in_ff = sorted(glob(path_join(args.work_dir,
                                   args.input_prefix + '.[0-9]*')))
-    sources = [open(f, 'r') for f in in_ff]
+    sources = [open_gz(f, 'r') for f in in_ff]
 
     n_output_files = args.n_reducers
 
     out_format = path_join(args.work_dir, args.output_prefix + '.%d')
-    outputs = [open(out_format % i, 'w') for i in range(n_output_files)]
+    outputs = [open_gz(out_format % i, 'w') for i in range(n_output_files)]
 
     # To cleanly separate reducer outputs by key groups we need to unpack
     # values on shuffling and compare keys. Every index change has to be

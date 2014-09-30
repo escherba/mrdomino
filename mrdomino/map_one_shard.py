@@ -3,7 +3,7 @@ import math
 import itertools
 from os.path import join as path_join
 from subprocess import Popen, PIPE
-from mrdomino.util import open_input, logger, get_instance, protocol, \
+from mrdomino.util import open_gz, logger, get_instance, protocol, \
     format_cmd
 
 
@@ -24,7 +24,7 @@ def each_input_line(input_files, shard, n_shards):
         zz = n_shards * (i + 1)
         assign = slice_assignments[aa:zz]
         inf_gen = itertools.cycle(range(n_shards))
-        with open_input(input_files[i], 'r') as fhandle:
+        with open_gz(input_files[i], 'r') as fhandle:
             for j, line in itertools.izip(inf_gen, fhandle):
                 if shard == assign[j]:
                     yield line
@@ -103,7 +103,7 @@ def map(shard, args):
     counters.incr("mapper", "seen", count_seen)
     counters.incr("mapper", "written", count_written)
 
-    # write out the counters to file.
+    # write the counters to file.
     fname = path_join(args.work_dir, 'map.counters.%d' % shard)
     logger.info("mapper {}: counters -> {}".format(shard, fname))
     with open(fname, 'w') as fhandle:

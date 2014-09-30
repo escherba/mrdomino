@@ -15,9 +15,9 @@ from mrdomino.util import MRCounter, read_files, read_lines, get_instance, \
 
 DOMINO_EXEC = 'domino'
 
-PREFIX_MAP_OUT = 'map.out'
-PREFIX_REDUCE_IN = 'reduce.in'
-PREFIX_REDUCE_OUT = 'reduce.out'
+PREFIX_MAP_OUT = 'map.out.gz'
+PREFIX_REDUCE_IN = 'reduce.in.gz'
+PREFIX_REDUCE_OUT = 'reduce.out.gz'
 
 
 def parse_args(args=None):
@@ -81,7 +81,7 @@ def combine_counters(work_dir, n_map_shards, n_reduce_shards):
 
 
 def update_shards_done(args, done_pattern, num_shards, shard2state):
-    """go to disk and find out which shards are completed."""
+    """go to disk and determine which shards are completed"""
     if args.use_domino:
         proc = subprocess.Popen([DOMINO_EXEC, 'download'])
         proc.communicate()

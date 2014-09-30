@@ -192,12 +192,12 @@ def read_files(filenames):
 def read_lines(filenames):
     """Returns an iterator over lines in a list of files"""
     for filename in filenames:
-        with open(filename, 'r') as filehandle:
+        with open_gz(filename, 'r') as filehandle:
             for line in filehandle:
                 yield line
 
 
-def open_input(filename, mode='r'):
+def open_gz(filename, mode='r'):
     """Transparently open input files, whether plain text or gzip"""
     if re.match(r'.*\.gz$', filename) is None:
         # no .gz extension, assume a plain text file
