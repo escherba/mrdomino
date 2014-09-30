@@ -1,5 +1,6 @@
 import heapq
 import json
+import re
 from glob import glob
 from argparse import ArgumentParser
 from os.path import join as path_join
@@ -27,7 +28,7 @@ def run_shuffle(args):
 
     # count exactly how many input lines we have so we can balance work.
     glob_pattern = path_join(args.work_dir,
-                             args.input_prefix + '_count.[0-9]*')
+                             (args.input_prefix % '[0-9]*') + '.count')
     count_ff = glob(glob_pattern)
     if not count_ff:
         raise RuntimeError("Step {} shuffler: not input files found matching "
@@ -36,13 +37,20 @@ def run_shuffle(args):
                 .format(args.step_idx, count_ff))
     num_entries = sum(imap(int, read_files(count_ff)))
 
-    in_ff = sorted(glob(path_join(args.work_dir,
-                                  args.input_prefix + '.[0-9]*')))
+    in_pattern = path_join(args.work_dir, args.input_prefix % '[0-9]*')
+    in_pattern_re = re.compile(in_pattern)
+    logger.info('Looking for files that match %s', in_pattern)
+
+    # since Python does not do extended globs, need to filter-out bad matches
+    # using a regex
+    in_ff = sorted([f for f in glob(in_pattern)
+                    if in_pattern_re.match(f) is not None])
+    logger.info('Found files: {}'.format(in_ff))
     sources = [open_gz(f, 'r') for f in in_ff]
 
     n_output_files = args.n_reducers
 
-    out_format = path_join(args.work_dir, args.output_prefix + '.%d')
+    out_format = path_join(args.work_dir, args.output_prefix % '%d')
     outputs = [open_gz(out_format % i, 'w') for i in range(n_output_files)]
 
     # To cleanly separate reducer outputs by key groups we need to unpack

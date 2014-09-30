@@ -99,7 +99,7 @@ def mapreduce(job_class):
     for i, (step, out_dir) in enumerate(zip(all_steps, tmp_dirs)):
         step_config = map(int, job._settings.step_config[i].split(':'))
         n_reducers = step_config[1]
-        reduce_format = os.path.join(out_dir, PREFIX_REDUCE_OUT + '.%d')
+        reduce_format = os.path.join(out_dir, PREFIX_REDUCE_OUT % '%d')
         input_file_lists.append([reduce_format % n for n in range(n_reducers)])
 
     logger.info("Input files: {}".format(input_file_lists))

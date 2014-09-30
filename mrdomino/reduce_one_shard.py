@@ -15,11 +15,11 @@ def reduce(shard, args):
     work_dir = args.work_dir
 
     # process each (key, value) pair.
-    out_fn = path_join(work_dir, args.output_prefix + '.%d' % shard)
+    out_fn = path_join(work_dir, args.output_prefix % str(shard))
     logger.info("reducer {}: output -> {}".format(shard, out_fn))
 
     assert args.input_prefix is not None
-    in_f = path_join(work_dir, args.input_prefix + '.%d' % shard)
+    in_f = path_join(work_dir, args.input_prefix % str(shard))
     logger.info("reducer {}: input <- {}".format(shard, in_f))
     input_stream = partial(open_gz, in_f, 'r')
 
@@ -70,13 +70,13 @@ def reduce(shard, args):
     counters.incr("reducer", "written", count_written)
 
     # write the counters to file.
-    fname = path_join(work_dir, 'reduce.counters.%d' % shard)
+    fname = path_join(work_dir, 'reduce-%d.counters' % shard)
     logger.info("reducer {}: counters -> {}".format(shard, fname))
     with open(fname, 'w') as fhandle:
         fhandle.write(counters.serialize())
 
     # finally note that we are done.
-    fname = path_join(work_dir, 'reduce.done.%d' % shard)
+    fname = path_join(work_dir, 'reduce-%d.done' % shard)
     logger.info("reducer {}: done -> {}".format(shard, fname))
     with open(fname, 'w') as fhandle:
         fhandle.write('')
