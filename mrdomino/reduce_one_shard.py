@@ -2,7 +2,7 @@ import json
 from os.path import join as path_join
 from functools import partial
 from contextlib import nested as nested_context
-from mrdomino.util import logger, get_instance, protocol
+from mrdomino.util import logger, get_instance, protocol, open_gz
 
 
 def reduce(shard, args):
@@ -15,13 +15,13 @@ def reduce(shard, args):
     work_dir = args.work_dir
 
     # process each (key, value) pair.
-    out_fn = path_join(work_dir, args.output_prefix + '.%d' % shard)
+    out_fn = path_join(work_dir, args.output_prefix % str(shard))
     logger.info("reducer {}: output -> {}".format(shard, out_fn))
 
     assert args.input_prefix is not None
-    in_f = path_join(work_dir, args.input_prefix + '.%d' % shard)
+    in_f = path_join(work_dir, args.input_prefix % str(shard))
     logger.info("reducer {}: input <- {}".format(shard, in_f))
-    input_stream = partial(open, in_f, 'r')
+    input_stream = partial(open_gz, in_f, 'r')
 
     if args.step_idx >= 0:
         if job.INTERNAL_PROTOCOL == protocol.JSONProtocol:
@@ -37,7 +37,8 @@ def reduce(shard, args):
 
     count_written = 0
     count_seen = 0
-    with nested_context(input_stream(), open(out_fn, 'w')) as (in_fh, out_fh):
+    with nested_context(input_stream(),
+                        open_gz(out_fn, 'w')) as (in_fh, out_fh):
         last_key = None
         values = []
         for line in in_fh:
@@ -68,14 +69,14 @@ def reduce(shard, args):
     counters.incr("reducer", "seen", count_seen)
     counters.incr("reducer", "written", count_written)
 
-    # write out the counters to file.
-    fname = path_join(work_dir, 'reduce.counters.%d' % shard)
+    # write the counters to file.
+    fname = path_join(work_dir, 'reduce-%d.counters' % shard)
     logger.info("reducer {}: counters -> {}".format(shard, fname))
     with open(fname, 'w') as fhandle:
         fhandle.write(counters.serialize())
 
     # finally note that we are done.
-    fname = path_join(work_dir, 'reduce.done.%d' % shard)
+    fname = path_join(work_dir, 'reduce-%d.done' % shard)
     logger.info("reducer {}: done -> {}".format(shard, fname))
     with open(fname, 'w') as fhandle:
         fhandle.write('')

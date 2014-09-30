@@ -1,10 +1,11 @@
 import heapq
 import json
+import re
 from glob import glob
 from argparse import ArgumentParser
 from os.path import join as path_join
 from itertools import imap
-from mrdomino.util import read_files, logger
+from mrdomino.util import read_files, logger, open_gz
 
 
 def parse_args(args=None):
@@ -15,9 +16,9 @@ def parse_args(args=None):
     parser.add_argument('--job_class', type=str, required=True)
     parser.add_argument('--step_idx', type=int, required=True)
     parser.add_argument('--n_reducers', type=int, required=True)
-    parser.add_argument('--input_prefix', type=str, default='map.out',
+    parser.add_argument('--input_prefix', type=str, default='map.out.gz',
                         help='string that input files are prefixed with')
-    parser.add_argument('--output_prefix', type=str, default='reduce.in',
+    parser.add_argument('--output_prefix', type=str, default='reduce.in.gz',
                         help='string to prefix output files')
     namespace = parser.parse_args(args)
     return namespace
@@ -27,7 +28,7 @@ def run_shuffle(args):
 
     # count exactly how many input lines we have so we can balance work.
     glob_pattern = path_join(args.work_dir,
-                             args.input_prefix + '_count.[0-9]*')
+                             (args.input_prefix % '[0-9]*') + '.count')
     count_ff = glob(glob_pattern)
     if not count_ff:
         raise RuntimeError("Step {} shuffler: not input files found matching "
@@ -36,14 +37,21 @@ def run_shuffle(args):
                 .format(args.step_idx, count_ff))
     num_entries = sum(imap(int, read_files(count_ff)))
 
-    in_ff = sorted(glob(path_join(args.work_dir,
-                                  args.input_prefix + '.[0-9]*')))
-    sources = [open(f, 'r') for f in in_ff]
+    in_pattern = path_join(args.work_dir, args.input_prefix % '[0-9]*')
+    in_pattern_re = re.compile(in_pattern)
+    logger.info('Looking for files that match %s', in_pattern)
+
+    # since Python does not do extended globs, need to filter-out bad matches
+    # using a regex
+    in_ff = sorted([f for f in glob(in_pattern)
+                    if in_pattern_re.match(f) is not None])
+    logger.info('Found files: {}'.format(in_ff))
+    sources = [open_gz(f, 'r') for f in in_ff]
 
     n_output_files = args.n_reducers
 
-    out_format = path_join(args.work_dir, args.output_prefix + '.%d')
-    outputs = [open(out_format % i, 'w') for i in range(n_output_files)]
+    out_format = path_join(args.work_dir, args.output_prefix % '%d')
+    outputs = [open_gz(out_format % i, 'w') for i in range(n_output_files)]
 
     # To cleanly separate reducer outputs by key groups we need to unpack
     # values on shuffling and compare keys. Every index change has to be

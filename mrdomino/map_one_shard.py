@@ -3,7 +3,7 @@ import math
 import itertools
 from os.path import join as path_join
 from subprocess import Popen, PIPE
-from mrdomino.util import open_input, logger, get_instance, protocol, \
+from mrdomino.util import open_gz, logger, get_instance, protocol, \
     format_cmd
 
 
@@ -24,7 +24,7 @@ def each_input_line(input_files, shard, n_shards):
         zz = n_shards * (i + 1)
         assign = slice_assignments[aa:zz]
         inf_gen = itertools.cycle(range(n_shards))
-        with open_input(input_files[i], 'r') as fhandle:
+        with open_gz(input_files[i], 'r') as fhandle:
             for j, line in itertools.izip(inf_gen, fhandle):
                 if shard == assign[j]:
                     yield line
@@ -42,7 +42,7 @@ def map(shard, args):
     assert 0 <= shard < n_shards
 
     if combine_func is None:
-        out_fn = path_join(args.work_dir, args.output_prefix + '.%d' % shard)
+        out_fn = path_join(args.work_dir, args.output_prefix % str(shard))
         logger.info("mapper {}: output -> {}".format(shard, out_fn))
         proc_sort = Popen(['sort', '-o', out_fn], bufsize=4096, stdin=PIPE)
         proc = proc_sort
@@ -103,8 +103,8 @@ def map(shard, args):
     counters.incr("mapper", "seen", count_seen)
     counters.incr("mapper", "written", count_written)
 
-    # write out the counters to file.
-    fname = path_join(args.work_dir, 'map.counters.%d' % shard)
+    # write the counters to file.
+    fname = path_join(args.work_dir, 'map-%d.counters' % shard)
     logger.info("mapper {}: counters -> {}".format(shard, fname))
     with open(fname, 'w') as fhandle:
         fhandle.write(counters.serialize())
@@ -112,8 +112,7 @@ def map(shard, args):
     # write how many entries were written for reducer balancing purposes.
     # note that if combiner is present, we delegate this responsibility to it.
     if combine_func is None:
-        fname = path_join(args.work_dir, args.output_prefix +
-                          '_count.%d' % shard)
+        fname = path_join(args.work_dir, (args.output_prefix % str(shard)) + '.count')
         logger.info("mapper {}: lines written -> {}".format(shard, fname))
         with open(fname, 'w') as fhandle:
             fhandle.write(str(count_written))
@@ -122,7 +121,7 @@ def map(shard, args):
     proc.communicate()
 
     # finally note that we are done.
-    fname = path_join(args.work_dir, 'map.done.%d' % shard)
+    fname = path_join(args.work_dir, 'map-%d.done' % shard)
     logger.info("mapper {}: done -> {}".format(shard, fname))
     with open(fname, 'w') as fhandle:
         fhandle.write('')
