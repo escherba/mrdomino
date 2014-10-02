@@ -1,4 +1,5 @@
 import json
+import re
 import math
 import itertools
 from os.path import join as path_join
@@ -44,8 +45,15 @@ def map(shard, args):
     if combine_func is None:
         out_fn = path_join(args.work_dir, args.output_prefix % str(shard))
         logger.info("mapper {}: output -> {}".format(shard, out_fn))
-        proc_sort = Popen(['sort', '-o', out_fn], bufsize=4096, stdin=PIPE)
-        proc = proc_sort
+        if re.match(r'.*\.gz$', out_fn) is None:
+            proc_sort = Popen(['sort', '-o', out_fn], bufsize=4096, stdin=PIPE)
+            proc = proc_sort
+        else:
+            proc_gzip = Popen(['gzip', '-c'], bufsize=4096, stdin=PIPE,
+                              stdout=open_gz(out_fn, 'w'))
+            proc_sort = Popen(['sort'], bufsize=4096, stdin=PIPE,
+                              stdout=proc_gzip.stdin)
+            proc = proc_gzip
     else:
         cmd_opts = format_cmd([
             'python', '-m', 'mrdomino.combine',

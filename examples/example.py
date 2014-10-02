@@ -30,10 +30,6 @@ class MRSummary(MRJob):
         self.increment_counter("TLD reduce1", tld, total)
         yield key, total    # username -> count of posts
 
-    def combine2(self, key, vals):
-        total = sum(vals)
-        yield key, total
-
     def map2(self, key, val):
         _, domain = key.split("@")
         tld = get_tld(domain)
@@ -55,7 +51,6 @@ class MRSummary(MRJob):
             ),
             MRStep(
                 mapper=self.map2,
-                combiner=self.combine2,
                 reducer=self.reduce2,
             )
         ]
