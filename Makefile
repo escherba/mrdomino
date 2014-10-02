@@ -8,7 +8,8 @@ PYTHON_TIMED = $(PYENV) time python
 run: dev
 	mkdir -p out
 	$(PYTHON) examples/example.py \
-		data/2014-01-18.detail.10000
+		--work_dirs tmp/step0.I5SYVC \
+		--input_files data/2014-01-18.detail.10000
 
 package: env
 	$(PYTHON) setup.py bdist_egg
