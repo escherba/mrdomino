@@ -204,7 +204,10 @@ def open_gz(filename, mode='r'):
         return open(filename, mode)
     else:
         # got a gzipped file
-        return gzip.open(filename, mode + 'b')
+        try:
+            return gzip.open(filename, mode + 'b')
+        except IOError:
+            return open(filename, mode)
 
 
 if __name__ == "__main__":

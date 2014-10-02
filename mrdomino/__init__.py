@@ -28,6 +28,10 @@ def parse_args(args=None, namespace=None, known=True, help=False):
     parser.add_argument('--n_shards_per_machine', type=int, default=4,
                         help='number of processes to spawn per domino job '
                         '(-1 for all)')
+    parser.add_argument('--work_dirs', type=str, nargs='+', default=[],
+                        help="work directories to use (optional)")
+    parser.add_argument('--input_files', type=str, nargs='+', default=[],
+                        help="input files")
     parser.add_argument('--step_config', type=str, nargs='+', default=[],
                         help="comma-delimited string of tuples"
                         " where 1st integer is numer of mappers, 2nd number "
@@ -92,11 +96,13 @@ def mapreduce(job_class):
         os.makedirs(tmp_root)
 
     exec_script = create_exec_script(tmp_root)
-    tmp_dirs = [mkdtemp(dir=tmp_root, prefix="step%d." % i)
-                for i in range(step_count)]
+    work_dirs = job._settings.work_dirs
+    num_dirs_to_create = max(0, step_count - len(work_dirs))
+    for i in range(num_dirs_to_create):
+        work_dirs.append(mkdtemp(dir=tmp_root, prefix="step%d." % i))
 
     input_file_lists = [input_files]
-    for i, (step, out_dir) in enumerate(zip(all_steps, tmp_dirs)):
+    for i, (step, out_dir) in enumerate(zip(all_steps, work_dirs)):
         step_config = map(int, job._settings.step_config[i].split(':'))
         n_reducers = step_config[1]
         reduce_format = os.path.join(out_dir, PREFIX_REDUCE_OUT % '%d')
@@ -108,11 +114,12 @@ def mapreduce(job_class):
         step_config = map(int, job._settings.step_config[i].split(':'))
         n_mappers = step_config[0]
         n_reducers = step_config[1]
+        work_dir = work_dirs[i]
         cmd_opts = format_cmd([
             '--step_idx', i,
             '--total_steps', step_count,
             '--input_files', input_file_lists[i],
-            '--work_dir', tmp_dirs[i],
+            '--work_dir', work_dir,
             '--exec_script', exec_script,
             '--no_clean', job._settings.no_clean,
             '--sync_domino', job._settings.sync_domino,
@@ -142,7 +149,10 @@ class MRJob(object):
         # allow unknown parameters from command line
         settings, input_files = parse_args(namespace=settings, known=True)
         self._settings = settings
-        self._input_files = input_files
+        if len(input_files) > 0:
+            self._input_files = input_files
+        else:
+            self._input_files = self._settings.input_files
         self._steps = self.steps()
         assert len(self._steps) == len(self._settings.step_config)
         self._counters = MRCounter()
