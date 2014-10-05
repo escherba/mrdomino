@@ -87,7 +87,7 @@ def update_shards_done(args, done_pattern, num_shards, shard2state):
         proc.communicate()
     for i in range(num_shards):
         filename = done_pattern % i
-        if os.path.isfile(filename):
+        if os.path.exists(filename):
             shard2state[i] = ShardState.DONE
 
 
@@ -240,16 +240,28 @@ def run_step(args):
                 os.unlink(fname)
 
     # shuffle mapper outputs to reducer inputs
-    logger.info("Shuffling...")
-    run_shuffle(shuffle_args(format_cmd([
-        '--step_idx', args.step_idx,
-        '--input_prefix', PREFIX_MAP_OUT,
-        '--output_prefix', PREFIX_REDUCE_IN,
-        '--job_module', args.job_module,
-        '--job_class', args.job_class,
-        '--work_dir', work_dir,
-        '--n_reducers', args.n_reducers
-    ])))
+    # check if shuffle-%d.done files are present
+    done_pattern = os.path.join(args.work_dir, "shuffle-%d.done")
+    shuffle_states = dict(zip(
+        range(args.n_reducers),
+        [ShardState.NOT_STARTED] * args.n_reducers))
+    for i in range(args.n_reducers):
+        name = done_pattern % i
+        if os.path.exists(name):
+            shuffle_states[i] = ShardState.DONE
+    shuffle_states_done = list(set(shuffle_states.itervalues())) == \
+        [ShardState.DONE]
+    if not shuffle_states_done:
+        logger.info("Shuffling...")
+        run_shuffle(shuffle_args(format_cmd([
+            '--step_idx', args.step_idx,
+            '--input_prefix', PREFIX_MAP_OUT,
+            '--output_prefix', PREFIX_REDUCE_IN,
+            '--job_module', args.job_module,
+            '--job_class', args.job_class,
+            '--work_dir', work_dir,
+            '--n_reducers', args.n_reducers
+        ])))
 
     if not args.no_clean:
         # clean up mapper outputs
@@ -312,7 +324,8 @@ def run_step(args):
 
         # make sure that files are sorted by shard number
         filenames = glob(os.path.join(work_dir, PREFIX_REDUCE_OUT % '[0-9]*'))
-        prefix_match = re.compile('.*\\b' + (PREFIX_REDUCE_OUT % '(\\d+)') + '$')
+        prefix_match = re.compile('.*\\b' +
+                                  (PREFIX_REDUCE_OUT % '(\\d+)') + '$')
         presorted = []
         for filename in filenames:
             match = prefix_match.match(filename)

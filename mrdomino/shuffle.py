@@ -77,6 +77,12 @@ def run_shuffle(args):
     for output in outputs:
         output.close()
 
+    done_pattern = path_join(args.work_dir, "shuffle-%d.done")
+    done_names = [done_pattern % i for i in range(n_output_files)]
+    for name in done_names:
+        with open(name, 'w') as fhandle:
+            fhandle.write('')
+
     logger.info("Step {} shuffler: lines written: {}"
                 .format(args.step_idx, lines_written))
 
