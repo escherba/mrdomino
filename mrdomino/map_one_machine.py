@@ -3,7 +3,8 @@ from StringIO import StringIO
 from argparse import ArgumentParser
 from multiprocessing import Pool
 from mrdomino import map_one_shard
-from mrdomino.util import MRTimer, logger
+from mrdomino.util import logger
+from pymaptools.benchmark import PMTimer
 
 
 def parse_args():
@@ -32,7 +33,7 @@ def do_shard(t):
     # http://seasonofcode.com/posts/python-multiprocessing-and-exceptions.html
     try:
         args, shard = t  # unwrap argument
-        with MRTimer() as timer:
+        with PMTimer() as timer:
             map_one_shard.map(shard, args)
         logger.info("Shard {} mapped: {}".format(shard, str(timer)))
     except Exception as err:

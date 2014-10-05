@@ -1,0 +1,2 @@
+--find-links http://packages.livefyre.com/buildout/packages/
+pymaptools==0.0.8
